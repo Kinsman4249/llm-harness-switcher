@@ -6,3 +6,10 @@ $HOME/
 # output are transient, not something future sessions need committed
 bench/logs/
 bench/*.result.*.json
+
+# Python bytecode caches are regenerable artifacts, never source
+__pycache__/
+*.pyc
+
+# Kilo's own workspace (agent Manager / plans / node_modules), not released
+/.kilo/
