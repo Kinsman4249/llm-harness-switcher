@@ -1,0 +1,10 @@
+# Private model profiles are NOT committed to this repo - github allows
+# dropping any number of your own *.sh files here (or copying them out of
+# the private presets repo), and they stay untracked. This allowlist keeps
+# only the shipped example profile and its docs in git. Note: this pattern
+# uses explicit filenames on purpose - a "!*/" re-include would un-ignore
+# every subdirectory under this folder as well.
+*
+!.gitignore
+!README.md
+!gemma4-e2b.sh

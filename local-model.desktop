@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Start Local Model (Kilo)
+Comment=Pick a local model, start it, and point the Kilo provider at it
+Exec=__BIN_DIR__/start-local-model-desktop.sh
+Icon=media-playback-start
+Terminal=false
+Categories=Utility;

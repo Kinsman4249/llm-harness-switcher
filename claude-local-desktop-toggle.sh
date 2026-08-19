@@ -24,11 +24,11 @@ CURRENT="$("$TOGGLE_SCRIPT" status)"
 
 if echo "$CURRENT" | grep -q "ON"; then
   "$TOGGLE_SCRIPT" off
-  notify-send "Claude Code: local mode OFF" "Back on Pro subscription. Reload the VS Code/VSCodium window."
+  notify-send "Claude Code: local mode OFF" "Back on Pro subscription; proxy stopped. Reload the VS Code/VSCodium window."
 else
   ON_ERR="$("$TOGGLE_SCRIPT" on 2>&1 >/dev/null)"
   if [ $? -eq 0 ]; then
-    notify-send "Claude Code: local mode ON" "Routing through local Qwen. Sonnet/Opus unavailable. Reload the VS Code/VSCodium window."
+    notify-send "Claude Code: local mode ON" "Routing through the local model. Sonnet/Opus unavailable. Reload the VS Code/VSCodium window."
   else
     # Show the toggle script's own first error line instead of guessing which
     # of its checks (llama-server vs. the LiteLLM proxy) actually failed.

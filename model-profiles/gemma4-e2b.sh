@@ -1,23 +1,70 @@
 # model-profiles/gemma4-e2b.sh
-# Profile for Gemma 4 E2B. See model-profiles/gemma4-e4b.sh for the fuller
-# comments - the two profiles only differ in size/layer numbers and repo
-# names. E2B is the weaker tool-use model of the pair (Tau2 tool-use average
-# 24.5% vs E4B's 42.2%, per the Google model card) - offered for completeness,
-# but install.sh recommends E4B by default for a Claude Code workload.
+# The SHIPPED EXAMPLE profile and the field reference every other profile
+# follows - see model-profiles/README.md for the full authoring guide.
+# Profile for Gemma 4 E2B. See the private presets repo's gemma4-e4b.sh for
+# the fuller comments - the two profiles only differ in size/layer numbers
+# and repo names. E2B is the weaker tool-use model of the pair (Tau2 tool-use
+# average 24.5% vs E4B's 42.2%, per the Google model card) - offered for
+# completeness, but the presets repo's gemma4-e4b.sh is the recommended Gemma
+# choice for a Claude Code workload.
 #
-# UNVERIFIED VALUES: several fields below are placeholders, not confirmed
+# UNVERIFIED VALUES: a few fields below are placeholders, not confirmed
 # facts, because confirming them needs a live llama-server build with this
 # model's actual GGUF loaded (see gemma4-support-spec.md sections 3 and 4).
-# Empty/placeholder values here are intentional - install.sh is written to
-# fail loudly (skip the feature, print a warning) rather than guess, per this
-# project's "no invented flags" rule. Fill these in only after running the
-# verification steps in gemma4-support-spec.md against a real build, then
-# remove this warning block.
+# install.sh is written to fail loudly (skip the feature, print a warning)
+# rather than guess, per this project's "no invented flags" rule. Fill these
+# in only after running the verification steps in gemma4-support-spec.md
+# against a real build, then remove this warning block. The multimodal and
+# reasoning fields above ARE set to confirmed-on-the-Hub values on purpose -
+# they're the example of those features working, not placeholders.
 
 PROFILE_NAME="Gemma 4 E2B"
 HF_REPO_DEFAULT="unsloth/gemma-4-E2B-it-GGUF"   # google/gemma-4-E2B-GGUF does not exist (404) - Google never
                                                  # published a GGUF for this model; unsloth's quant repo confirmed
                                                  # to exist on the Hub. Quant filenames/sizes still UNVERIFIED below.
+
+# Runtime that serves this model. llama.cpp builds llama-server and downloads
+# the GGUF; "ollama" would use OLLAMA_MODEL instead; "vllm" uses VLLM_MODEL_ID.
+# Leave at llama.cpp unless you've added one of the other runtimes.
+MODEL_RUNTIME="llama.cpp"                        # llama.cpp | ollama | vllm
+# RUNTIME_PORT is per-runtime (llama.cpp 8080, ollama 11434, vllm 8000);
+# only set it here to override that default.
+
+# Multimodal: real image input. Gemma 4 is multimodal upstream, and this
+# example profile wires it up so every image path install.sh exposes gets a
+# real value (mirroring how the presets repo's gemma4-e4b.sh does it). The
+# unsloth repo ships mmproj-*.gguf files (mmproj-BF16/F16/F32.gguf, confirmed
+# in the repo listing 2026-08-18); F16 is the standard llama.cpp pick. With
+# both set, install.d/70-model-download.sh offers to download the projector
+# and install.d/80-launcher.sh passes --mmproj on the llama-server command
+# line, and the kilo model entry advertises attachment + image input. Note:
+# whether llama-server actually loads this specific projector still needs one
+# live check against a real build (see the UNVERIFIED caveat at the top) -
+# but the value itself is real and confirmed to exist on the Hub, not a guess.
+MMPROJ_REPO="unsloth/gemma-4-E2B-it-GGUF"
+MMPROJ_PATTERN="mmproj-F16"
+
+# Reasoning/"thinking" mode for this model. All three modes are supported and
+# wired end to end - install.sh's prompt offers them, install.d/80-launcher.sh
+# maps them to the right llama.cpp flag (--reasoning on/off/effort, or the
+# chat-template-kwargs fallback), and sync-local-model.sh copies them into the
+# kilo model entry (reasoning + options.reasoningEffort for "effort"):
+#   "off"    (the default) - preserves the measured tool-calling stance:
+#            thinking cost ~13x tokens / ~11x latency for no tool-call gain on
+#            this project's live tests (see README "Thinking mode")
+#   "on"     - force reasoning always on
+#   "effort" - reasoning on, with a selectable effort level
+# REASONING_EFFORT only matters when REASONING_MODE=effort.
+REASONING_MODE="off"                             # off | on | effort
+REASONING_EFFORT="low"                           # low | medium | high (used when REASONING_MODE=effort)
+
+# Kilo Code provider entry capability flags and identity (see the generated
+# start-local-model.sh / sync-local-model.sh). KILO_MODEL_ID defaults to this
+# file's stem, KILO_MODEL_NAME defaults to PROFILE_NAME if left empty.
+KILO_TOOL_CALL="yes"                             # yes | no
+KILO_TEMPERATURE="yes"                           # yes | no
+KILO_MODEL_ID=""
+KILO_MODEL_NAME=""
 
 DRAFT_REPO="unsloth/gemma-4-E2B-it-GGUF"        # confirmed on the Hub: top-level mtp-gemma-4-E2B-it.gguf
                                                  # (97817664 bytes, Q8_0 only, single file - not baked into the

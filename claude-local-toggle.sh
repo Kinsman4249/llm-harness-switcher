@@ -19,11 +19,13 @@
 #   ./claude-local-toggle.sh status
 #
 # "on" refuses to flip the switch unless llama-server itself (not just the
-# LiteLLM proxy) is actually answering, since the proxy is always running via
-# systemd regardless of whether the model is loaded, and it will happily
-# report itself healthy while pointed at a backend nobody started yet.
-# --force skips that check, for deliberately testing the clean-failure path
-# (see README's Manual verification section).
+# LiteLLM proxy) is actually answering, since the proxy is only around because
+# YOU started it (it's on-demand now, not a systemd unit) and it will happily
+# report itself healthy while pointed at a backend nobody started yet. So "on"
+# first starts the proxy on demand (via start-litellm-proxy.sh) if it isn't
+# up, THEN health-checks llama-server. --force skips the llama-server check,
+# for deliberately testing the clean-failure path (see README's Manual
+# verification section).
 #
 # After toggling, reload the VS Code/VSCodium window (Ctrl+Shift+P >
 # "Reload Window") so the extension re-reads settings.json. The extension
@@ -36,6 +38,7 @@ BACKUP_FILE="$HOME/.claude/settings.json.pre-local-toggle.bak"
 PROXY_URL="http://localhost:4000"
 PROXY_TOKEN="sk-local-dev-key"   # must match master_key in litellm_config.yaml
 LLAMA_URL="http://localhost:8080"   # must match the port start-local-llama.sh serves on
+BIN_DIR="$HOME/.local/bin"
 
 ACTION="${1:-}"
 FORCE="${2:-}"
@@ -45,17 +48,33 @@ mkdir -p "$(dirname "$SETTINGS_FILE")"
 
 case "$ACTION" in
   on)
+    # Proxy is on-demand: start it if it isn't already healthy, BEFORE the
+    # llama-server check (the old flow assumed a systemd proxy that was
+    # always up; that assumption is gone).
+    if ! curl -s -o /dev/null -H "Authorization: Bearer $PROXY_TOKEN" "$PROXY_URL/health" | grep -q "200"; then
+      echo "LiteLLM proxy isn't running - starting it on demand..."
+      if [ -x "$BIN_DIR/start-litellm-proxy.sh" ]; then
+        "$BIN_DIR/start-litellm-proxy.sh" || {
+          echo "ERROR: failed to start the LiteLLM proxy." >&2
+          [ "$FORCE" != "--force" ] && { echo "Not touching settings.json." >&2; exit 1; }
+          echo "(--force given, continuing anyway - Claude Code will fail until the proxy is up.)" >&2
+        }
+      else
+        echo "WARNING: $BIN_DIR/start-litellm-proxy.sh not found (install not run, or BIN_DIR moved)." >&2
+      fi
+    fi
+
     if [ "$FORCE" != "--force" ] && ! curl -s -o /dev/null -w "%{http_code}" "$LLAMA_URL/health" | grep -q "200"; then
       echo "ERROR: llama-server isn't responding at $LLAMA_URL." >&2
-      echo "Start it first: ~/.local/bin/start-local-llama.sh" >&2
+      echo "Start it first: $BIN_DIR/start-local-llama.sh" >&2
       echo "Not touching settings.json. Re-run with 'on --force' to switch on anyway" >&2
       echo "(useful only for deliberately testing the clean-failure path)." >&2
       exit 1
     fi
 
-    if ! curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $PROXY_TOKEN" "$PROXY_URL/health" | grep -q "200"; then
+    if ! curl -s -o /dev/null -H "Authorization: Bearer $PROXY_TOKEN" "$PROXY_URL/health" | grep -q "200"; then
       echo "Warning: proxy not responding at $PROXY_URL." >&2
-      echo "Check: systemctl --user status litellm-ollama-box.service" >&2
+      echo "Check: $BIN_DIR/start-litellm-proxy.sh (or the proxy log)" >&2
       if [ "$FORCE" != "--force" ]; then
         echo "Not touching settings.json. Re-run with 'on --force' to switch on anyway." >&2
         exit 1
@@ -100,6 +119,12 @@ PYEOF
 
     echo "Local mode OFF. Reload the VS Code/VSCodium window to apply."
     echo "Claude Code is back on normal Pro subscription auth."
+
+    # The proxy is on-demand: stop it once nobody's using it.
+    if [ -x "$BIN_DIR/stop-litellm-proxy.sh" ]; then
+      echo "Stopping the on-demand LiteLLM proxy..."
+      "$BIN_DIR/stop-litellm-proxy.sh"
+    fi
     ;;
 
   status)

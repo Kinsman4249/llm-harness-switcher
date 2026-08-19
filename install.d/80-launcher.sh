@@ -55,11 +55,11 @@ build_start_script() {
   # chat-template-kwargs key this model's template uses to toggle reasoning
   # (every profile that sets it so far uses "enable_thinking" - see the
   # CONFIRMED note next to THINKING_KWARG_KEY in whichever model-profiles/
-  # *.sh set it). Always emitted explicitly - true or false - rather than
+  # *.sh set it). Always emitted explicitly - on/off/effort - rather than
   # leaving it to the GGUF's baked-in chat-template default, in either
-  # direction: ENABLE_THINKING (install.sh --enable-thinking/
-  # --disable-thinking, off by default - see install.d/00-config.sh) decides
-  # which.
+  # direction. REASONING_MODE (profile default "off", overridable at the
+  # prompt and by install.sh's --enable-thinking/--disable-thinking flags)
+  # decides how.
   #
   # CONFIRMED by reading common/arg.cpp on this project's 2026-07-23 llama.cpp
   # checkout: "enable_thinking" via --chat-template-kwargs is deprecated
@@ -70,20 +70,31 @@ build_start_script() {
   # writes the literal "enable_thinking" key, so it's only a safe substitute
   # when THINKING_KWARG_KEY is exactly that (true for every profile so far) -
   # falls back to the old flag (deprecation warning and all, still correct)
-  # if a future profile ever uses a different key.
+  # if a future profile ever uses a different key. Newer llama.cpp builds also
+  # accept "--reasoning effort <level>" (low/medium/high) for effort-based
+  # reasoning; a profile's REASONING_MODE=effort maps to that.
   CTK_ARGS=""
   if [ "${THINKING_KWARG_KEY:-}" = "enable_thinking" ]; then
-    if [ "${ENABLE_THINKING:-no}" = "yes" ]; then
-      CTK_ARGS=" --reasoning on"
-    else
-      CTK_ARGS=" --reasoning off"
-    fi
+    case "${REASONING_MODE:-off}" in
+      on)
+        CTK_ARGS=" --reasoning on"
+        ;;
+      effort)
+        CTK_ARGS=" --reasoning effort ${REASONING_EFFORT:-low}"
+        ;;
+      *)
+        CTK_ARGS=" --reasoning off"
+        ;;
+    esac
   elif [ -n "${THINKING_KWARG_KEY:-}" ]; then
-    if [ "${ENABLE_THINKING:-no}" = "yes" ]; then
-      CTK_ARGS=" --chat-template-kwargs '{\"${THINKING_KWARG_KEY}\":true}'"
-    else
-      CTK_ARGS=" --chat-template-kwargs '{\"${THINKING_KWARG_KEY}\":false}'"
-    fi
+    case "${REASONING_MODE:-off}" in
+      on|effort)
+        CTK_ARGS=" --chat-template-kwargs '{\"${THINKING_KWARG_KEY}\":true}'"
+        ;;
+      *)
+        CTK_ARGS=" --chat-template-kwargs '{\"${THINKING_KWARG_KEY}\":false}'"
+        ;;
+    esac
   fi
 
   # ARCH_NOTES comes from the model profile (model-profiles/*.sh) as one long
@@ -150,13 +161,20 @@ build_start_script() {
       ;;
   esac
 
+  # Multimodal projector: pass --mmproj when the profile's projector was
+  # downloaded (DOWNLOAD_MMPROJ=yes and MMPROJ_REPO/MMPROJ_PATTERN set). This
+  # is what makes image input real - without it, a multimodal GGUF still only
+  # serves text (see README "Multimodal weights").
+  MMPROJ_ARGS=""
+  [ -n "${LLAMA_MMPROJ_PATH:-}" ] && MMPROJ_ARGS=" --mmproj \"$LLAMA_MMPROJ_PATH\""
+
   # Everything optional gets folded into one trailing flag string, appended
   # directly to the --host line below rather than given its own backslash-
   # continued line - a conditionally-empty line in the middle of a `\`
   # continuation chain silently breaks the command in two (the shell treats
   # the blank line as ending it), so nothing optional may sit on its own
   # line here even when guarded by [ -n ... ].
-  EXTRA_FLAGS="$OT_ARGS$KVOFFLOAD_ARGS$PLE_OFFLOAD_ARGS$SPEC_ARGS$SAMPLING_ARGS$CTK_ARGS"
+  EXTRA_FLAGS="$OT_ARGS$KVOFFLOAD_ARGS$PLE_OFFLOAD_ARGS$SPEC_ARGS$SAMPLING_ARGS$CTK_ARGS$MMPROJ_ARGS"
 
   # --fit off (manual KV sizing, Qwen): the context/VRAM budget above was
   # computed by hand, and --fit on would fight that manual -ngl/--override-
@@ -215,7 +233,7 @@ $([ -n "$OT_ARGS" ] && echo "# --override-tensor          last $LLAMA_CPU_FFN_LA
 $([ -n "$KVOFFLOAD_ARGS" ] && echo "# --no-kv-offload            whole KV cache kept in system RAM instead of VRAM")
 $([ -n "$PLE_OFFLOAD_ARGS" ] && echo "# --override-tensor          Per-Layer Embedding tables kept in system RAM (lookup-only, cheap to offload)")
 $([ -n "$SAMPLING_ARGS" ] && echo "# --temp/--top-p/--top-k     sampling defaults from the $PROFILE_NAME model card")
-$([ -n "$CTK_ARGS" ] && echo "# ${CTK_ARGS# }              reasoning explicitly forced $([ "${ENABLE_THINKING:-no}" = "yes" ] && echo "ON (--enable-thinking passed to install.sh)" || echo "OFF (default - see README.md 'Thinking mode')")")
+$([ -n "$CTK_ARGS" ] && echo "# ${CTK_ARGS# }                reasoning explicitly forced ${REASONING_MODE:-off} (profile default / prompt answer; --enable-thinking and --disable-thinking override)")
 # LOG_FILE            every run's output also goes here (overwritten each
 #                      start, not appended) so a crash is diagnosable even if
 #                      it happened in a terminal window that already closed.
@@ -266,6 +284,10 @@ EOF
 # already running, its --no-webui choice was already locked in when it
 # started, so there's nothing left to toggle without a restart.
 build_desktop_launcher() {
+  if [ "$INSTALL_MODE" != "classic" ]; then
+    log "Skipping classic OpenHands/browser-chat-ui launcher (mode is $INSTALL_MODE)"
+    return
+  fi
   if [ "$INSTALL_DESKTOP_SHORTCUT" = "yes" ]; then
     # start-openhands.sh: install (first run only) + launch OpenHands inside
     # $CONTAINER_NAME, auto-pointed at this project's proxy - same endpoint
@@ -462,6 +484,42 @@ EOF
   fi
 }
 
+# --- Kilo mode: start-local-model.sh + its desktop icon ---
+# The desktop-icon flow for kilo mode. Installs the checked-in start-local-
+# model.sh template (which reads its config from CONF_FILE at runtime) plus a
+# terminal wrapper and desktop entry. The template does the whole
+# scan-offer-start-test-sync loop the Kilo Code provider needs, and doubles as
+# the install-time test flow (run with --profile <stem>). Every runtime is
+# handled: llama.cpp (flags built at runtime by sourcing the matched profile -
+# the same profile generator install.d uses), ollama (serve + run), vllm
+# (serve). The model entry in the KILO config is rewritten by
+# sync-local-model.sh (installed by install.d/85-kilo-sync.sh) after every
+# successful start, so Kilo Code always sees only the currently-running model.
+build_kilo_launcher() {
+  if [ "$INSTALL_MODE" != "kilo" ]; then
+    log "Skipping kilo launcher installation (mode is $INSTALL_MODE)"
+    return
+  fi
+  mkdir -p "$BIN_DIR" "$KILO_STATE_DIR"
+  cp "$SCRIPT_DIR/start-local-model.sh" "$BIN_DIR/start-local-model.sh"
+  chmod +x "$BIN_DIR/start-local-model.sh"
+  log "Installed $BIN_DIR/start-local-model.sh (from repo template)"
+
+  if [ "$INSTALL_DESKTOP_SHORTCUT" = "yes" ]; then
+    cp "$SCRIPT_DIR/start-local-model-desktop.sh" "$BIN_DIR/start-local-model-desktop.sh"
+    chmod +x "$BIN_DIR/start-local-model-desktop.sh"
+    mkdir -p "$DESKTOP_DIR"
+    # The .desktop Exec line needs the concrete path (desktop launchers can't
+    # read the config), so the __BIN_DIR__ token is sed-baked here.
+    sed "s|__BIN_DIR__|$BIN_DIR|g" "$SCRIPT_DIR/local-model.desktop" > "$DESKTOP_DIR/local-model.desktop"
+    chmod +x "$DESKTOP_DIR/local-model.desktop"
+    log "Installed $BIN_DIR/start-local-model-desktop.sh and $DESKTOP_DIR/local-model.desktop"
+    echo "Desktop icon 'Start Local Model (Kilo)' installed - double-click it to"
+    echo "open the model picker in a terminal window. On KDE Plasma (Bazzite"
+    echo "default), the first double-click may prompt to trust/execute it."
+  fi
+}
+
 launch_and_verify() {
   echo
   echo "llama-server is ready to launch, but not started automatically."
@@ -503,6 +561,17 @@ launch_and_verify() {
         echo "  (no n_ctx line found - check the log file directly)"
     fi
 
+    # --- The LiteLLM proxy is on-demand now - make sure it's up before the
+    # smoke test, which routes through it (this is what claude-local-toggle.sh
+    # on also does).
+    if [ -x "$BIN_DIR/start-litellm-proxy.sh" ]; then
+      "$BIN_DIR/start-litellm-proxy.sh" || \
+        echo "WARNING: could not start the LiteLLM proxy on demand." >&2
+    else
+      echo "WARNING: $BIN_DIR/start-litellm-proxy.sh not found - install.sh" >&2
+      echo "didn't generate it, or BIN_DIR changed. The smoke test below will fail." >&2
+    fi
+
     # --- Smoke test: a real completion through the PROXY, using the exact
     # model string Claude Code sends (see litellm_config.yaml), not just a
     # /health 200. /health only proves the process is listening; it does not
@@ -530,7 +599,7 @@ except Exception:
       echo "WARNING: smoke test through the proxy did not return usable content." >&2
       echo "Raw response: $SMOKE_RESPONSE" >&2
       echo "Claude Code will likely hang or error in local mode until this is fixed." >&2
-      echo "Check: journalctl --user -u litellm-ollama-box.service -n 50" >&2
+      echo "Check: $PROXY_LOG_FILE (proxy log) and verify llama-server is still up." >&2
     fi
   else
     echo "WARNING: llama-server did not respond at http://localhost:$LLAMA_PORT/health." >&2
@@ -538,10 +607,38 @@ except Exception:
   fi
 }
 
-# Orchestrates the three functions above, reproducing the original guard:
-# skip the whole step (with an explanatory message) unless both the
-# llama-server binary and a model file resolved earlier.
+# Kilo mode's install-time test flow: launch the selected profile's model via
+# the same generated start-local-model.sh the desktop icon uses (--profile
+# skips the menu), which starts the runtime, waits on health, smoke-tests, and
+# syncs the Kilo provider config. Nothing for the user to do - a papercut-free
+# end-to-end run, same helpers as the icon.
+launch_and_verify_kilo() {
+  if [ ! -x "$BIN_DIR/start-local-model.sh" ]; then
+    echo "Skipping kilo launch+sync: $BIN_DIR/start-local-model.sh wasn't generated." >&2
+    echo "Re-run install.sh once the runtime and model are ready." >&2
+    return
+  fi
+  echo "Launching $PROFILE_NAME ($MODEL_PROFILE) and syncing the Kilo provider..."
+  "$BIN_DIR/start-local-model.sh" --profile "$MODEL_PROFILE"
+}
+
+# Orchestrates the launcher step, dispatching on install mode. Classic mode
+# generates the llama.cpp start script + desktop icon + OpenHands/browser-webui
+# offers, then smoke-tests through the on-demand proxy. Kilo mode generates
+# start-local-model.sh + its desktop icon, then runs the same script with
+# --profile to start/test/sync the selected model end to end.
 run_launcher_step() {
+  if [ "$INSTALL_MODE" = "kilo" ]; then
+    build_kilo_launcher
+    if [ "$INSTALL_DESKTOP_SHORTCUT" != "yes" ]; then
+      echo "Note: no desktop icon requested - the launcher is at"
+      echo "  $BIN_DIR/start-local-model.sh (double-click wrapper skipped)."
+    fi
+    launch_and_verify_kilo
+    return
+  fi
+
+  # classic
   if [ -n "$LLAMA_SERVER_BIN" ] && [ -n "$LLAMA_MODEL_PATH" ]; then
     build_start_script
     build_desktop_launcher

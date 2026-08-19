@@ -188,7 +188,25 @@ Git operations (commit, push, tags) aren't a proxy concern at all - Zoo Code run
 
 ### Kilo Code CLI
 
-[Kilo Code](https://kilo.ai/docs/code-with-ai/platforms/cli) is a separate terminal-based client, not a VS Code extension - it is not touched by `claude-local-toggle.sh` at all (that script only ever edits `~/.claude/settings.json`, which Kilo does not read). Point it at the proxy through its own config file instead: `~/.config/kilo/kilo.json` (or `kilo.jsonc` - global scope) or a project-level `./kilo.json`/`./.kilo/`. A minimal provider block:
+[Kilo Code](https://kilo.ai/docs/code-with-ai/platforms/cli) is a separate terminal-based client, not a VS Code extension - `claude-local-toggle.sh` never touches it (that script only ever edits `~/.claude/settings.json`, which Kilo does not read). How you point Kilo at your local model depends on which install mode you chose.
+
+#### Kilo mode (`install.sh --mode kilo`) - single auto-synced provider
+
+`--mode kilo` installs a self-contained alternative to the classic LiteLLM switcher: instead of routing many models through one proxy endpoint with a model dropdown, it manages a **single** Kilo provider (`local-model`) and rewrites that provider's one model entry to whatever is currently running. This matches how Kilo's own schema is shaped - a `provider.<id>.models` map with per-model `tool_call`, `reasoning`/`modalities`, `limit`, and `options` fields - and avoids the "OpenAI Compatible vs LiteLLM" endpoint mismatch below entirely, because Kilo talks straight to the runtime's native OpenAI-compatible endpoint (`/v1`).
+
+The whole flow is one script, installed to `~/.local/bin/start-local-model.sh` (also reachable via the "Start Local Model (Kilo)" desktop icon):
+
+1. If a server is already healthy on the active runtime's port, it skips straight to re-syncing the provider config - a second click never restarts anything.
+2. Otherwise it scans `MODEL_ROOT` (`~/models` by default) for GGUFs plus any `ollama list` entries, shows a numbered menu, and starts the chosen model on its runtime: llama.cpp (port 8080, profile flags built at runtime by sourcing the matched profile), ollama (11434), or vllm (8000). `start-local-model.sh --profile <stem>` skips the menu - this is also what the install step itself runs to test the installation end to end.
+3. It waits on the runtime's health endpoint, smoke-tests one tiny completion through `/v1`, then runs **`sync-local-model.sh`**, which rewrites the single provider entry to point at exactly this running model (context, output, reasoning/effort, and - for multimodal models like `gemma4-e2b.sh` - image attachment modalities).
+
+"Single provider, one model at a time" is a deliberate constraint that keeps the config honest: there is exactly one `model: "local-model/<id>"` in `kilo.json`/`kilo.jsonc`, so Kilo always sees only what is really booted. No stale dropdown entries, no hand-edited `limit` numbers - every sync sets `limit.context`/`limit.output` from the profile's real `LLAMA_CTX_SIZE`/`LLAMA_N_PREDICT`. To switch models you re-run `start-local-model.sh`; to change defaults you re-run `install.sh`.
+
+**Kilo caches provider config in its sqlite store and only re-reads this file on session start.** After any model change, reload/restart the Kilo Code window (the sync script prints this reminder). The whole target `~/.config/kilo/kilo.jsonc` is rewritten atomically (temp file + rename), and only the `provider.local-model` block and the top-level `model` pointer - your other settings and any `$schema` are preserved (that repo's `kilo.jsonc` is a symlink; the scripts write through it at the path Kilo reads).
+
+#### Classic mode - point Kilo at the LiteLLM proxy
+
+In `--mode classic` (the default), Kilo reads `~/.config/claude-local-setup.conf`-driven config too - but through the same proxy endpoint as the other clients, so the model dropdown comes from LiteLLM and `limit`/`reasoning` are hand-maintained. A minimal provider block:
 
 ```jsonc
 {
@@ -218,7 +236,7 @@ Git operations (commit, push, tags) aren't a proxy concern at all - Zoo Code run
 Two things about this config are easy to get wrong and fail silently or confusingly:
 
 - **The API key.** Kilo's config format supports `{env:PROXY_MASTER_KEY}`-style env var references, but nothing in this project exports `PROXY_MASTER_KEY` (or any of `~/.config/claude-local-setup.conf`'s other values) into your shell environment - it is a config file, not sourced by anything. A `{env:...}` reference to a variable that is not actually set resolves to empty, so Kilo sends no `Authorization` header at all. Worse, LiteLLM's own auth-failure error path throws an unrelated `ModuleNotFoundError: No module named 'prisma'` (an optional dependency this project's master-key-only setup does not install) instead of a clean 401 when a request arrives with no key, so the symptom in `journalctl --user -u litellm-ollama-box.service` is a confusing 500, not an obviously auth-shaped error. Simplest fix: put the literal key value in the config directly, as above, rather than an `{env:...}` reference - safe for a global, non-repo config file, and this is a local-only token gating your own machine's proxy port anyway (see above), not a real API key. If you do want the `{env:...}` form, you have to export the variable yourself (e.g. in `.bashrc`) - this project will not do it for you.
-- **`limit.context`/`limit.output`.** Same as Zoo Code's client-side settings above - Kilo cannot query `llama-server` for these, so they have to be kept in sync by hand with the active profile's real values (`LLAMA_CTX_SIZE` and `LLAMA_N_PREDICT` in `~/.config/claude-local-setup.conf`, or just read them straight out of the generated `~/.local/bin/start-local-llama.sh`'s `-c`/`-n` flags). They go stale silently - nothing errors if `kilo.jsonc` still says `32768` after you have re-run `install.sh` with a larger context, it just means Kilo may truncate or misjudge conversation length well before the model's real limit.
+- **`limit.context`/`limit.output`.** Same as Zoo Code's client-side settings above - Kilo cannot query `llama-server` for these, so they have to be kept in sync by hand with the active profile's real values (`LLAMA_CTX_SIZE` and `LLAMA_N_PREDICT` in `~/.config/claude-local-setup.conf`, or just read them straight out of the generated `~/.local/bin/start-local-llama.sh`'s `-c`/`-n` flags). They go stale silently - nothing errors if `kilo.jsonc` still says `32768` after you have re-run `install.sh` with a larger context, it just means Kilo may truncate or misjudge conversation length well before the model's real limit. (Kilo mode's `sync-local-model.sh` fixes exactly this staleness bug as a side effect of rewriting the provider on every model change.)
 
 ### Recommended client-side model settings per profile
 
