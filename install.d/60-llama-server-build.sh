@@ -95,9 +95,13 @@ ensure_llama_server_binary_distrobox() {
         exit 1
       fi
 
-      if [ -d "$HOME/llama.cpp" ]; then
+      if [ -d "$HOME/llama.cpp/.git" ]; then
         git -C "$HOME/llama.cpp" pull
       else
+        # A directory may already exist from a failed or partial clone; a stale
+        # non-repo dir makes `git pull` fail with "not a git repository", so
+        # clear it and clone fresh.
+        [ -d "$HOME/llama.cpp" ] && rm -rf "$HOME/llama.cpp"
         git clone https://github.com/ggml-org/llama.cpp "$HOME/llama.cpp"
       fi
       cd "$HOME/llama.cpp"
@@ -180,9 +184,13 @@ ensure_llama_server_binary_native() {
       command -v g++   >/dev/null 2>&1 || { echo "ERROR: a C++ compiler missing." >&2; exit 1; }
     fi
 
-    if [ -d "$HOME/llama.cpp" ]; then
+    if [ -d "$HOME/llama.cpp/.git" ]; then
       git -C "$HOME/llama.cpp" pull
     else
+      # A directory may already exist from a failed or partial clone; a stale
+      # non-repo dir makes `git pull` fail with "not a git repository", so
+      # clear it and clone fresh.
+      [ -d "$HOME/llama.cpp" ] && rm -rf "$HOME/llama.cpp"
       git clone https://github.com/ggml-org/llama.cpp "$HOME/llama.cpp"
     fi
     cd "$HOME/llama.cpp"
