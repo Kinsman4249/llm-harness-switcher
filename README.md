@@ -1,4 +1,4 @@
-# claude-code-proxy-switcher
+# llm-harness-switcher
 
 An on/off switch for routing Claude Code through a local model instead of your Anthropic Pro/Max subscription, with no API key anywhere and no cloud fallback. When it's off, Claude Code behaves exactly as if this project didn't exist, normal subscription auth, Sonnet and Opus available. When it's on, every model Claude Code might call, main session or sub-agent, routes to a local model (Qwen3.5-9B, Gemma 4, or Nemotron 3 Nano, your choice - see "Choosing a model" below) running under llama-server (llama.cpp's own server), meant for small, cheap tasks where you don't want to spend Pro usage at all.
 
@@ -18,7 +18,7 @@ It does not try to be a hybrid router that transparently falls back to cloud whe
 
 ## Choosing a model
 
-`install.sh` asks for a "model profile" - see `model-profiles/*.sh` - which sets every model-specific default below it (repo, quant sizes, layer count, KV-cache sizing behaviour, speculative-decoding wiring). Six are available:
+`install.sh` asks for a "model profile" - see `model-profiles/*.sh` - which sets every model-specific default below it (repo, quant sizes, layer count, KV-cache sizing behaviour, speculative-decoding wiring). Only the example profile, `gemma4-e2b.sh`, is committed to this repo; the other, live-tested profiles live in the private presets repo (`8gb-immutable-fedora-presets`, pointed at via `install.sh --presets-dir`) and are discovered there, never auto-cloned. Details of every profile field are in `model-profiles/README.md`. Together the shipped example and the presets repo cover six models:
 
 | | Qwen3.5-9B-MTP | Qwen3.5-9B-Defiant-Fable-MTP | Gemma 4 E2B | Gemma 4 E4B | Nemotron 3 Nano 4B | Nemotron 3 Nano 30B-A3B |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -110,15 +110,15 @@ Not adopted, revisit later. TurboQuant is a Google DeepMind KV-cache quantizatio
 ## Quickstart
 
 ```bash
-mkdir -p ~/claude-code-proxy-switcher && cd ~/claude-code-proxy-switcher
-curl -fsSL https://github.com/Kinsman4249/claude-code-proxy-switcher/archive/refs/heads/main.tar.gz | tar -xz --strip-components=1
+mkdir -p ~/llm-harness-switcher && cd ~/llm-harness-switcher
+curl -fsSL https://github.com/Kinsman4249/llm-harness-switcher/archive/refs/heads/main.tar.gz | tar -xz --strip-components=1
 chmod +x install.sh uninstall.sh
 ./install.sh
 ```
 
 This pulls a fresh tarball of the repo and overwrites everything in the directory unconditionally - no git working tree, so there's nothing to conflict with local edits. If you'd rather track history and use `git pull`, cloning with git works the same way, but then it's on you to keep that checkout clean (commit or stash any local edits before pulling) since a normal `git pull` refuses to overwrite files you've changed.
 
-The installer is interactive: it asks about your container name, proxy port and token, whether to enable systemd lingering, which quantization to use, your card's usable VRAM and batch size (used to compute a recommended context length, see below), and whether to install desktop icons (one to toggle Claude Code routing, one to start the model itself). Every answer is saved to `~/.config/claude-local-setup.conf` and shown as the default on the next run, so re-running the installer is mostly pressing Enter.
+The installer is interactive: it asks about your container name, proxy port and token, which install mode you want (`classic` for the LiteLLM proxy path used by Claude Code/Zoo Code, or `kilo` for the single-provider Kilo Code flow, see below), which quantization to use, your card's usable VRAM and batch size (used to compute a recommended context length, see below), and whether to install desktop icons (one to toggle Claude Code routing, one to start the model itself). Every answer is saved to `~/.config/claude-local-setup.conf` and shown as the default on the next run, so re-running the installer is mostly pressing Enter.
 
 If the container name you type doesn't match exactly one container, `install.sh` lists everything `distrobox list` actually sees and asks you to pick a number instead of guessing or failing outright - this also covers typing something ambiguous that matches more than one container. Whatever you pick is saved as the new default.
 
@@ -127,8 +127,8 @@ Changing quant, context length, or any of the tuning flags later doesn't require
 ## Updating
 
 ```bash
-cd ~/claude-code-proxy-switcher
-curl -fsSL https://github.com/Kinsman4249/claude-code-proxy-switcher/archive/refs/heads/main.tar.gz | tar -xz --strip-components=1
+cd ~/llm-harness-switcher
+curl -fsSL https://github.com/Kinsman4249/llm-harness-switcher/archive/refs/heads/main.tar.gz | tar -xz --strip-components=1
 ```
 
 Same command as the Quickstart - it just re-downloads and overwrites every file in the directory with whatever is on `main` now. Re-run `install.sh` afterward if the update touched anything you'd want re-applied (new prompts, changed defaults) - it's always safe to re-run, see above. Any local hand-edits to files in this directory get silently overwritten by this command, since it isn't a merge - if you've customized anything here, save a copy first.
@@ -137,18 +137,23 @@ Same command as the Quickstart - it just re-downloads and overwrites every file 
 
 ```
 .
-|-- litellm_config.yaml            - LiteLLM proxy config, local-only, no API key, no cloud entries
-|-- litellm-ollama-box.service      - systemd --user unit, starts only the proxy at login, no model auto-load
-|-- distrobox-reminder.service      - systemd --user unit, login notification reminding you to stop the container before gaming
-|-- claude-local-toggle.sh          - the actual switch: on/off/status, edits ~/.claude/settings.json
+|-- litellm_config.yaml            - LiteLLM proxy config template, local-only, no API key, no cloud entries
+|-- claude-local-toggle.sh          - the switch: on/off/status; on starts the proxy on demand, edits ~/.claude/settings.json
 |-- claude-local-desktop-toggle.sh  - wrapper for the desktop icon: flips state, confirms via notification
 |-- claude-local-toggle.desktop     - desktop launcher entry
-|-- install.sh                      - thin orchestrator: sources install.d/*.sh in order, then runs each step
+|-- start-litellm-proxy.sh          - on-demand proxy starter (classic mode), copied to $BIN_DIR by install.sh
+|-- stop-litellm-proxy.sh           - on-demand proxy stopper (classic mode), called by claude-local-toggle.sh off
+|-- start-local-model.sh            - kilo-mode launcher template: pick a model, start it, sync the Kilo provider
+|-- start-local-model-desktop.sh    - kilo-mode desktop icon wrapper
+|-- sync-local-model.sh             - kilo-mode: rewrites the single Kilo provider entry to the running model
+|-- local-model.desktop            - kilo-mode desktop launcher entry
+|-- distrobox-reminder.service      - optional systemd --user unit, login notification reminding you to stop the container before gaming. Not installed by default.
+|-- install.sh                      - thin orchestrator: sources install.d/*.sh in order, then runs each step (--mode classic|kilo)
 |-- install.d/                      - one function per install step (00-config.sh .. 90-summary.sh), see install.sh's header comment
-`-- uninstall.sh                    - reverses install.sh: stops/removes services, restores backed-up configs, deletes generated files
+`-- uninstall.sh                    - reverses install.sh: restores backed-up configs, removes generated files and desktop entries
 ```
 
-`start-local-llama.sh` and, if you installed the desktop icons, `start-local-llama-desktop.sh` plus a `claude-local-start-model.desktop` launcher entry, are all generated by `install.sh` into your `$BIN_DIR`/`$DESKTOP_DIR` - none of them are checked into this repo, don't hand-edit them, re-run `install.sh` to change any of their flags. `local-model.Modelfile` (the old Ollama build recipe) has been removed: it's no longer read by anything now that the local runtime is `llama-server` instead of Ollama, and its quant/context reasoning lives on in `CHANGELOG.md`'s history if you want it.
+`start-local-llama.sh` plus, if you installed the desktop icons, `model-session.sh`, `start-local-llama-desktop.sh`, and a `claude-local-start-model.desktop` launcher entry are all generated by `install.sh` into your `$BIN_DIR`/`$DESKTOP_DIR`; the kilo-mode templates above (`start-local-model.sh`, `sync-local-model.sh`, their desktop wrappers) are copied from this repo the same way. None of them are checked into the repo in final form, don't hand-edit them, re-run `install.sh` to change any of their flags. `local-model.Modelfile` (the old Ollama build recipe) has been removed: it's no longer read by anything now that the local runtime is `llama-server` instead of Ollama, and its quant/context reasoning lives on in `CHANGELOG.md`'s history if you want it. The classic-mode service units shipped in this repo (`litellm-ollama-box.service` and, optionally, `distrobox-reminder.service`) are a documented manual option only - `install.sh` installs neither of them and **auto-starts nothing** (see "No auto-start" below).
 
 ## How the switch works
 
@@ -160,11 +165,15 @@ claude-local-toggle.sh off      # back to normal Pro/Max subscription auth
 claude-local-toggle.sh status   # check which state you're in
 ```
 
-`on` refuses to flip the switch unless `llama-server` itself is actually answering at its `/health` endpoint, not just the LiteLLM proxy (the proxy runs via systemd all the time regardless of whether the model is loaded, so a proxy-only check would happily report success while pointed at a backend nobody started). If it's not reachable, `on` prints a reminder to run `start-local-llama.sh` and exits without touching `settings.json`. To deliberately test the clean-failure path described below, override with `claude-local-toggle.sh on --force`.
+`on` starts the LiteLLM proxy on demand first (`start-litellm-proxy.sh`, if it isn't already up) and then refuses to flip the switch unless `llama-server` itself is also answering at its `/health` endpoint, not just the proxy (a proxy-only check would happily report success while pointed at a backend nobody started). If llama-server isn't reachable, `on` prints a reminder to run `start-local-llama.sh` and exits without touching `settings.json`. To deliberately test the clean-failure path described below, override with `claude-local-toggle.sh on --force`. `off` returns Claude Code to normal subscription auth and, since nothing else is using the proxy, stops it again (`stop-litellm-proxy.sh`).
 
 After toggling, reload the VS Code/VSCodium window (`Ctrl+Shift+P` > "Reload Window"), the extension only reads `settings.json` at startup, not live.
 
 If you installed the desktop icon, double-clicking it does the same thing without a terminal: it checks the current state, flips it, and confirms the new state with a desktop notification - including a critical notification instead of silent failure if it tried to turn on but `llama-server` wasn't reachable.
+
+## No auto-start
+
+Nothing starts at login anymore: `install.sh` no longer installs a systemd `--user` unit for the proxy and doesn't enable linger. Both the LiteLLM proxy and `llama-server` are launched on demand - the proxy when you run `claude-local-toggle.sh on` (or the starter script directly), the model when you run the launcher - and the proxy is torn down again by `claude-local-toggle.sh off`. The `.service` files shipped in this repo (`litellm-ollama-box.service` for the proxy, `distrobox-reminder.service` for a login reminder to stop the container before gaming) are kept as a documented manual option for people who want proxy-at-login, but neither is installed by default, so a fresh install has zero background processes until you actually use something.
 
 ## Using this with other VS Code AI extensions
 
@@ -235,7 +244,7 @@ In `--mode classic` (the default), Kilo reads `~/.config/claude-local-setup.conf
 
 Two things about this config are easy to get wrong and fail silently or confusingly:
 
-- **The API key.** Kilo's config format supports `{env:PROXY_MASTER_KEY}`-style env var references, but nothing in this project exports `PROXY_MASTER_KEY` (or any of `~/.config/claude-local-setup.conf`'s other values) into your shell environment - it is a config file, not sourced by anything. A `{env:...}` reference to a variable that is not actually set resolves to empty, so Kilo sends no `Authorization` header at all. Worse, LiteLLM's own auth-failure error path throws an unrelated `ModuleNotFoundError: No module named 'prisma'` (an optional dependency this project's master-key-only setup does not install) instead of a clean 401 when a request arrives with no key, so the symptom in `journalctl --user -u litellm-ollama-box.service` is a confusing 500, not an obviously auth-shaped error. Simplest fix: put the literal key value in the config directly, as above, rather than an `{env:...}` reference - safe for a global, non-repo config file, and this is a local-only token gating your own machine's proxy port anyway (see above), not a real API key. If you do want the `{env:...}` form, you have to export the variable yourself (e.g. in `.bashrc`) - this project will not do it for you.
+- **The API key.** Kilo's config format supports `{env:PROXY_MASTER_KEY}`-style env var references, but nothing in this project exports `PROXY_MASTER_KEY` (or any of `~/.config/claude-local-setup.conf`'s other values) into your shell environment - it is a config file, not sourced by anything. A `{env:...}` reference to a variable that is not actually set resolves to empty, so Kilo sends no `Authorization` header at all. Worse, LiteLLM's own auth-failure error path throws an unrelated `ModuleNotFoundError: No module named 'prisma'` (an optional dependency this project's master-key-only setup does not install) instead of a clean 401 when a request arrives with no key, so the symptom is a confusing 500 in the proxy's log (`~/.local/state/litellm-proxy.log`, or `journalctl --user -u litellm-ollama-box.service` if you installed the optional manual unit) - not an obviously auth-shaped error. Simplest fix: put the literal key value in the config directly, as above, rather than an `{env:...}` reference - safe for a global, non-repo config file, and this is a local-only token gating your own machine's proxy port anyway (see above), not a real API key. If you do want the `{env:...}` form, you have to export the variable yourself (e.g. in `.bashrc`) - this project will not do it for you.
 - **`limit.context`/`limit.output`.** Same as Zoo Code's client-side settings above - Kilo cannot query `llama-server` for these, so they have to be kept in sync by hand with the active profile's real values (`LLAMA_CTX_SIZE` and `LLAMA_N_PREDICT` in `~/.config/claude-local-setup.conf`, or just read them straight out of the generated `~/.local/bin/start-local-llama.sh`'s `-c`/`-n` flags). They go stale silently - nothing errors if `kilo.jsonc` still says `32768` after you have re-run `install.sh` with a larger context, it just means Kilo may truncate or misjudge conversation length well before the model's real limit. (Kilo mode's `sync-local-model.sh` fixes exactly this staleness bug as a side effect of rewriting the provider on every model change.)
 
 ### Recommended client-side model settings per profile
@@ -270,6 +279,8 @@ This launches `llama-server` inside the container with the flags `install.sh` ge
 If you installed the desktop icons, "Start Local Model" does the same thing for you: double-click it and it opens `start-local-llama.sh` in its own terminal window (`konsole`, falling back to `gnome-terminal` or `xterm`), so starting the model day to day is one click instead of typing a command. If it's already running, it just tells you so instead of opening a second instance. If no terminal emulator can be found on your desktop session, it falls back to a notification containing the exact command to paste into a terminal yourself - this fallback path hasn't been exercised in practice since it depends on your specific desktop setup, so treat it as best-effort until you've confirmed the double-click actually opens a window.
 
 That same icon also asks (in the terminal it opens, before starting `llama-server`) whether to install/launch [OpenHands](https://docs.openhands.dev/) - a dockerless, pip-installed AI coding agent CLI - inside the same container. Answer `n` (or just press Enter) to skip it and get the old model-only behavior. Answering `y` installs OpenHands the first time it's needed (needs Python 3.12 inside the container; `install.sh` doesn't install it up front, `start-openhands.sh` installs it on demand via `dnf` if missing) and opens it in its own terminal window, pre-pointed at this project's local proxy (`http://localhost:$PROXY_PORT/v1`, same wildcard `openai/local-llm` model string documented for Zoo Code above) via OpenHands' own `LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL` + `--override-with-envs` environment-variable config path, so it talks to your local model with no manual setup. Since this runs inside the same Distrobox container as `llama-server` rather than a separate Docker daemon, it works on an immutable host without needing Docker at all. Not yet exercised end-to-end on a real desktop session - if the install step fails, check `~/.local/state/openhands-install.log` for the full `pip`/`dnf` output.
+
+The same pre-launch terminal also asks **"Also enable llama.cpp's browser chat UI on this server? [y/N]"** - a web chat UI at `http://localhost:$LLAMA_PORT` served by llama.cpp itself, so you can talk to the model in a browser without any other client. The launcher normally passes `--no-webui`; answering yes sets `LLAMA_ENABLE_WEBUI=yes`, which omits it for that run. This is the same server process, same port, same model already resident in VRAM either way - `--no-webui` only toggles whether llama.cpp serves its small static chat-UI assets alongside the OpenAI-compatible API on that one HTTP listener, so it never loads a second copy of the model or starts a second server. If you run `start-local-llama.sh` directly instead of through the desktop icon, prefix it with the env var: `LLAMA_ENABLE_WEBUI=yes ~/.local/bin/start-local-llama.sh`.
 
 Model profiles that specify sampling defaults (`--temp`/`--top-p`/`--top-k`) get them set on the server itself, from the model card, rather than relying on whatever the client sends - see `model-profiles/*.sh`. Where a model card gives separate recipes for reasoning vs. tool-calling use (Nemotron 3 Nano 30B-A3B does: temp 1.0/top_p 1.0 for reasoning, temp 0.6/top_p 0.95 for tool calling), the profile uses whichever recipe matches how this project actually runs it - tool-calling, since thinking is off by default (see below) - not just whichever numbers appear first on the card. Gemma 4's "thinking mode" is deliberately left off: it's triggered by putting a `<|think|>` token at the start of the system prompt, not a CLI flag, and this project never injects it, since for a mechanical Claude Code tool-calling workload thinking output is pure added latency and token cost. Add the token to a system prompt yourself if you want it.
 
@@ -325,7 +336,7 @@ general_settings:
 
 Easiest path: answer "yes" to `install.sh`'s "Enable verbose LiteLLM proxy logging?" prompt, it uncomments `log_level: DEBUG` (and `log_file` too, if you also ask for disk logging) in the deployed config for you.
 
-To do it by hand instead: uncomment `log_level: DEBUG` in the deployed file, restart the proxy (`systemctl --user restart litellm-ollama-box.service`), then watch `journalctl --user -u litellm-ollama-box.service -f` (console logging, the default) or your chosen `log_file` path (disk logging). This is what shows you the exact model-name string Claude Code sent, useful when a request fails to match any `model_name` entry.
+To do it by hand instead: uncomment `log_level: DEBUG` in the deployed file, restart the proxy (with the proxy on-demand, stop and start it again: `$BIN_DIR/stop-litellm-proxy.sh && $BIN_DIR/start-litellm-proxy.sh`), then watch the proxy's own log - `$HOME/.local/state/litellm-proxy.log` (disk logging, the named `log_file`) or, if you installed the optional manual `litellm-ollama-box.service` unit, `journalctl --user -u litellm-ollama-box.service -f`. This is what shows you the exact model-name string Claude Code sent, useful when a request fails to match any `model_name` entry.
 
 ## Manual verification
 
