@@ -2,9 +2,11 @@ todo.md
 handoff.md
 $HOME/
 
-# bench/ - per-run debug logs and query_and_grade.py's generated grading
-# output are transient, not something future sessions need committed
+# bench/ - per-run debug logs, haystack prompt builds, and query_and_grade.py's
+# generated grading output are transient, not something future sessions need
+# committed
 bench/logs/
+bench/haystack*.json
 bench/*.result.*.json
 
 # Python bytecode caches are regenerable artifacts, never source

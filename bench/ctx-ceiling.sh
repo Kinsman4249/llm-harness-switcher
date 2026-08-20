@@ -53,7 +53,10 @@ PROFILE_DIRS=""
 [ -f "$CONF_FILE" ] && PROFILE_DIRS="$(sed -n 's/^PROFILE_DIRS_CONF="\(.*\)"$/\1/p' "$CONF_FILE")"
 [ -z "$PROFILE_DIRS" ] && PROFILE_DIRS="$BENCH_DIR/../model-profiles /var/home/someone/github/8gb-immutable-fedora-presets/model-profiles"
 
-LLAMA_BUILD="$("$LLAMA_BIN" --version 2>/dev/null | head -1)"
+LLAMA_BUILD="$("$LLAMA_BIN" --version 2>&1 | head -1)"
+# short build token recorded in every result row (e.g. "d59d455fd")
+BLD="$(echo "$LLAMA_BUILD" | grep -oE 'commit [0-9a-f]+' | awk '{print $2}')"
+[ -z "$BLD" ] && BLD="unknown"
 
 log()  { echo "[$(date +%H:%M:%S)] $*" | tee -a "$RUN_LOG"; }
 debug(){ [ "$DEBUG" = "1" ] && echo "[DEBUG $(date +%H:%M:%S)] $*" >> "$RUN_LOG"; }
@@ -106,14 +109,28 @@ wait_for_health() {
     waited=$((waited + 2))
   done
   [ "$healthy" -ge 2 ] || return 1
-  # real /completion smoke (not just health - health-only is not proof of a
-  # working model: /health answers 200 even while the model is still loading).
+  # /health returns 200 as soon as the server binds, BEFORE the model finishes
+  # loading, so health alone is not proof of a working model (a /completion
+  # smoke 503s during model load - this exact race invalidated an earlier
+  # Nemotron sweep). Retry the smoke until it returns real content, a generous
+  # model-load window elapses, or the process dies.
   local resp
-  resp=$(curl -s -m 60 "http://127.0.0.1:$PORT/completion" \
-    -H "Content-Type: application/json" \
-    -d '{"prompt":"The capital of France is","n_predict":8}')
-  echo "$resp" | grep -q '"content"' || { debug "no real completion: $resp"; return 1; }
-  return 0
+  while [ "$waited" -lt "$(( timeout_s + 240 ))" ]; do
+    if ! pgrep -f "bin/llama-server" > /dev/null 2>&1; then
+      log "llama-server died during model load"
+      return 1
+    fi
+    resp=$(curl -s -m 60 "http://127.0.0.1:$PORT/completion" \
+      -H "Content-Type: application/json" \
+      -d '{"prompt":"The capital of France is","n_predict":8}')
+    if echo "$resp" | grep -q '"content"' && ! echo "$resp" | grep -q '"error"'; then
+      return 0
+    fi
+    sleep 5
+    waited=$((waited + 5))
+  done
+  debug "model never became loadable for smoke: test timed out"
+  return 1
 }
 
 read_vram_mib() {
@@ -136,7 +153,15 @@ read_rss_gib() {
 }
 
 fitted_ctx() {
-  grep -oE 'n_ctx_slot = [0-9]+' "$SERVER_LOG" | tail -1 | grep -oE '[0-9]+$'
+  # Authoritative effective context: llama-server reports what it ACTUALLY
+  # allocated. When a requested -c exceeds n_ctx_train, llama-server caps the
+  # slot context and /props reflects the cap (fitted < requested = the capping
+  # evidence, llama.cpp issue #17459). The startup log would show the literal
+  # "capping" line, but llama-server buffers that log internally (fd stays at
+  # pos 0 on a redirected file) so /props is the reliable source.
+  curl -s -m 5 "http://127.0.0.1:$PORT/props" \
+    | python3 -c "import json,sys; print(json.load(sys.stdin)['default_generation_settings']['n_ctx'])" 2>/dev/null \
+    || echo ""
 }
 
 # Build the llama-server arg list for a profile exactly as start_llama_server()
@@ -146,7 +171,7 @@ build_llama_args() {
   local profile_file="$1" gguf="$2" ctx="$3"; shift 3
   # shellcheck source=/dev/null
   source "$profile_file"
-  LLAMA_CPU_FFN_LAYERS="${LLAMA_CPU_FFN_LAYERS:-$LLAMA_CPU_FFN_LAYERS_RECOMMENDED:-0}"
+  LLAMA_CPU_FFN_LAYERS="${LLAMA_CPU_FFN_LAYERS:-${LLAMA_CPU_FFN_LAYERS_RECOMMENDED:-0}}"
   local -a args=()
   args+=( "$LLAMA_BIN" -m "$gguf" -c "$ctx" -b "$DEFAULT_BATCH" -n "$DEFAULT_OUTPUT" )
   args+=( -fa on --cache-type-k "${CACHE_TYPE_K:-q8_0}" --cache-type-v "${CACHE_TYPE_V:-q8_0}" )
@@ -204,7 +229,10 @@ start_server() {
     log "launch attempt $attempt/4: $profile ctx=$ctx $*"
     cmd="$(build_llama_args "$(find_profile_file "$profile")" "$gguf" "$ctx" "$@")"
     debug "cmd: $cmd"
-    nohup bash -lc "$cmd" > "$SERVER_LOG" 2>&1 &
+    # stdbuf: stdout to a file is block-buffered, so llama.cpp's periodic log
+    # lines (incl. the n_ctx_slot / capping evidence we read for a ceiling) sit
+    # in the buffer instead of hitting $SERVER_LOG. Force line buffering.
+    nohup stdbuf -oL -eL bash -lc "$cmd" > "$SERVER_LOG" 2>&1 &
     disown
     if wait_for_health 300; then
       ok=1
@@ -294,10 +322,12 @@ gate() {
   else
     out="$(python3 "$BENCH_DIR/query_and_grade.py" "$hfile" "$label" "$PORT" 2>&1)"
   fi
-  local sentinel nval
-  sentinel="$(echo "$out" | python3 -c "import json,sys; g=[ln for ln in sys.stdin.read().splitlines() if 'sentinels_found' in ln][0].split(':')[-1].strip().rstrip(','); print(g)" 2>/dev/null)"
-  nval="$(echo "$out" | python3 -c "import json,sys; d=[ln for ln in sys.stdin.read().splitlines() if 'def_combine_sentinels_present' in ln][0]; print('true' in d)" 2>/dev/null)"
-  [ "${sentinel:-0}" = "3" ] && [ "${nval:-false}" = "true" ] && pass="PASS" || pass="FAIL-Q"
+  # grade JSON is the lines before the "---RAW RESPONSE---" separator.
+  local grade_json sentinel nval
+  grade_json="$(printf '%s\n' "$out" | sed -n '1,/---RAW RESPONSE---/p' | head -n -1)"
+  sentinel="$(printf '%s' "$grade_json" | python3 -c "import json,sys;print(json.load(sys.stdin)['sentinels_found'])" 2>/dev/null)"
+  nval="$(printf '%s' "$grade_json" | python3 -c "import json,sys;print(json.load(sys.stdin)['def_combine_sentinels_present'])" 2>/dev/null)"
+  if [ "${sentinel:-0}" = "3" ] && [ "${nval,,}" = "true" ]; then pass="PASS"; else pass="FAIL-Q"; fi
   vram="$(read_vram_mib)"; rss="$(read_rss_gib)"
   log "[gate] $label ctx=$ctx fitted=$fitted vram=$vram rss=$rss quality=$pass ($sentinel/3, def=$nval)"
   echo "| $label | $profile | $(basename "$gguf") | $BLD | $ctx | $pass | $fitted | $vram | $rss | $sentinel/3 |" >> "$RESULTS_MD"
