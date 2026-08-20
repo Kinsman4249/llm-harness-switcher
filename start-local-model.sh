@@ -22,7 +22,12 @@
 #   7. Run sync-local-model.sh so the Kilo provider points at exactly this
 #      running model, then notify + remind to restart Kilo.
 #
-# Usage: start-local-model.sh [--profile <stem>]
+# Usage: start-local-model.sh [--profile <stem>] [--mode <name>]
+#   --profile <stem>  skip the model menu and start that profile directly
+#   --mode <name>     force the reasoning mode (off|on|budgeted|max|effort,
+#                     or a mode a profile's REASONING_MODES offers); ignored
+#                     (with a warning) if a mode switch would need a restart
+#                     of an already-running server
 
 set -uo pipefail
 
@@ -66,6 +71,7 @@ if [ -f "$CONF_FILE" ]; then
 fi
 
 PROFILE_ARG=""
+CLI_MODE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --profile)
@@ -73,9 +79,19 @@ while [ $# -gt 0 ]; do
       PROFILE_ARG="${1:-}"
       shift || true
       ;;
+    --mode)
+      shift
+      CLI_MODE="${1:-}"
+      shift || true
+      ;;
     --help|-h|help)
-      echo "Usage: $0 [--profile <stem>]"
+      echo "Usage: $0 [--profile <stem>] [--mode <name>]"
       echo "Without --profile, scans for local models and shows a menu."
+      echo "Without --mode and when the profile's REASONING_MODES offers more"
+      echo "than one mode, an interactive menu lets you pick one."
+      echo "--mode <name> forces the reasoning mode directly. Valid names are"
+      echo "the profile's REASONING_MODES (typically off|on|budgeted|max), or"
+      echo "the legacy off|on|effort when the profile sets none."
       exit 0
       ;;
     *) shift ;;
@@ -142,12 +158,44 @@ find_profile_file() {
   done
 }
 
+mode_to_sync() {
+  # Translate a runtime reasoning mode to the off|on|effort vocabulary
+  # sync-local-model.sh / kilo-jsonc-edit.py understand. off/effort pass
+  # through; on and the sub-modes that emit --reasoning on (budgeted/max)
+  # both become plain "on" for the kilo entry.
+  case "${1:-off}" in
+    on|budgeted|max) echo "on" ;;
+    effort)          echo "effort" ;;
+    *)               echo "off" ;;
+  esac
+}
+
+mode_desc() {
+  # One-line menu description for a reasoning mode (flag effect + output
+  # window). Runs after the profile is sourced, so the REASONING_* fields
+  # that dry it up are available.
+  case "$1" in
+    off)      echo "thinking off - tool-calling default, min tokens/latency" ;;
+    on)       echo "thinking on - template default; unbounded within the output window" ;;
+    budgeted) echo "thinking on, budget ${REASONING_BUDGET_DEFAULT:-8192} tokens; output capped ${REASONING_OUTPUT_MAX:-$DEFAULT_OUTPUT}" ;;
+    max)      echo "thinking on, unlimited budget; output capped ${REASONING_OUTPUT_MAX:-$DEFAULT_OUTPUT}" ;;
+    effort)   echo "thinking on with effort ${REASONING_EFFORT:-$DEFAULT_EFFORT} (legacy)" ;;
+    *)        echo "$1" ;;
+  esac
+}
+
 # --- Step 1: already running on the active port? Re-sync only. ---
 if [ -f "$ACTIVE_STATE" ]; then
   # shellcheck source=/dev/null
   source "$ACTIVE_STATE"
   if [ -n "${ACTIVE_PORT:-}" ] && [ -n "${ACTIVE_RUNTIME:-}" ] && runtime_healthy "$ACTIVE_PORT" "$ACTIVE_RUNTIME"; then
     logf "A model server is already running at ${ACTIVE_BASE_URL:-http://127.0.0.1:$ACTIVE_PORT/v1}."
+    logf "  running mode: ${ACTIVE_MODE:-$(mode_to_sync "${ACTIVE_REASONING:-off}")}"
+    if [ -n "$CLI_MODE" ] && [ "$CLI_MODE" != "${ACTIVE_MODE:-${ACTIVE_REASONING:-off}}" ]; then
+      logf "--mode $CLI_MODE differs from the running mode; switching the reasoning"
+      logf "mode requires restarting llama-server. Stop the running server first "
+      logf "(the menu / --mode flags apply at a fresh start). Re-syncing the current server."
+    fi
     logf "Re-syncing the Kilo provider config for it (no restart)."
     if [ -x "$BIN_DIR/sync-local-model.sh" ]; then
       "$BIN_DIR/sync-local-model.sh" \
@@ -157,7 +205,7 @@ if [ -f "$ACTIVE_STATE" ]; then
         --model-name "${ACTIVE_MODEL_NAME:-Local Model}" \
         --context "${ACTIVE_CTX:-$DEFAULT_CTX}" \
         --output "${ACTIVE_OUTPUT:-$DEFAULT_OUTPUT}" \
-        --reasoning "${ACTIVE_REASONING:-off}" \
+        --reasoning "$(mode_to_sync "${ACTIVE_REASONING:-off}")" \
         --effort "${ACTIVE_EFFORT:-$DEFAULT_EFFORT}" \
         --attachment "${ACTIVE_ATTACHMENT:-no}"
     else
@@ -304,6 +352,83 @@ else
   [ "$MODEL_RUNTIME" = "llama" ] && MODEL_RUNTIME="llama.cpp"
 fi
 
+# --- Resolve the reasoning mode: --mode > interactive menu > saved default ---
+# The profile (sourced above) may offer a curated mode list (REASONING_MODES);
+# without one, keep the legacy single-choice behavior (off|on|effort). The
+# resolved value lives in a runtime-only var MODE - the persistent
+# REASONING_MODE/CONF is never rewritten by a session choice.
+if [ -n "${REASONING_MODES:-}" ]; then
+  IFS=',' read -r -a MODES <<< "$REASONING_MODES"
+else
+  MODES=( off on effort )
+fi
+
+# Interactive reasoning-mode menu: only on the no-profile path, for a
+# llama.cpp runtime with a matched profile, when the profile offers more than
+# one mode, and the user did not pass --mode. Empty Enter keeps the
+# pre-select; invalid input re-prompts (a mis-type should not kill a launch).
+MODE=""
+if [ -z "$CLI_MODE" ] && [ -z "$PROFILE_ARG" ] && \
+   [ "$MODEL_RUNTIME" = "llama.cpp" ] && [ -n "$profile_file" ] && \
+   [ "${#MODES[@]}" -gt 1 ]; then
+  preselect="${REASONING_MODE:-${MODES[0]}}"
+  preselect_ok=no
+  for m in "${MODES[@]}"; do [ "$m" = "$preselect" ] && preselect_ok=yes; done
+  [ "$preselect_ok" = "no" ] && preselect="${MODES[0]}"
+  echo
+  echo "Reasoning/thinking mode for this run?"
+  for i in "${!MODES[@]}"; do
+    printf '  %d) %s - %s\n' "$((i+1))" "${MODES[$i]}" "$(mode_desc "${MODES[$i]}")"
+  done
+  echo "  (Enter) $preselect"
+  PICK_MODE=""
+  while [ -z "$PICK_MODE" ]; do
+    read -rp "Pick a mode: " PICK_MODE
+    if [ -z "$PICK_MODE" ]; then
+      PICK_MODE="$preselect"
+    elif [[ "$PICK_MODE" =~ ^[0-9]+$ ]] && [ "$PICK_MODE" -ge 1 ] && [ "$PICK_MODE" -le "${#MODES[@]}" ]; then
+      PICK_MODE="${MODES[$((PICK_MODE-1))]}"
+    else
+      logf "Invalid choice '$PICK_MODE' - enter 1-${#MODES[@]} or Enter for $preselect." >&2
+      PICK_MODE=""
+    fi
+  done
+  MODE="$PICK_MODE"
+elif [ -n "$CLI_MODE" ]; then
+  MODE="$CLI_MODE"
+else
+  MODE="${REASONING_MODE:-${DEFAULT_REASONING:-off}}"
+  if [ -n "${REASONING_MODES:-}" ]; then
+    mode_ok=no
+    for m in "${MODES[@]}"; do [ "$m" = "$MODE" ] && mode_ok=yes; done
+    [ "$mode_ok" = "no" ] && MODE="${MODES[0]}"
+  fi
+fi
+
+# Any resolved mode (menued, --mode, or saved) must be one the current runtime
+# actually offers; error out with the allowed list otherwise.
+mode_valid=no
+for m in "${MODES[@]}"; do [ "$m" = "$MODE" ] && mode_valid=yes; done
+if [ "$mode_valid" = "no" ]; then
+  echo "ERROR: reasoning mode '$MODE' is not one of: ${MODES[*]}" >&2
+  exit 1
+fi
+
+# Output window depends on the resolved mode: budgeted/max raise it so the
+# reasoning budget is actually reachable (a budget larger than -n can never be
+# spent). off|on|effort keep the default.
+case "$MODE" in
+  budgeted|max)
+    if [ -n "${REASONING_OUTPUT_MAX:-}" ] && [ "${REASONING_OUTPUT_MAX:-0}" -gt "$DEFAULT_OUTPUT" ] 2>/dev/null; then
+      OUTPUT="$REASONING_OUTPUT_MAX"
+    else
+      logf "WARNING: mode '$MODE' needs REASONING_OUTPUT_MAX > $DEFAULT_OUTPUT to raise the" >&2
+      logf "output window; keeping the default of $DEFAULT_OUTPUT. The reasoning budget may" >&2
+      logf "not be fully spendable inside it." >&2
+    fi
+    ;;
+esac
+
 # --- Step 4/5: start the runtime and flags ---
 LOG_FILE="$HOME/.local/state/llama-server.log"
 mkdir -p "$(dirname "$LOG_FILE")"
@@ -361,10 +486,12 @@ start_llama_server() {
   [ -n "${DEFAULT_TOP_P:-}" ] && args+=( --top-p "$DEFAULT_TOP_P" )
   [ -n "${DEFAULT_TOP_K:-}" ] && args+=( --top-k "$DEFAULT_TOP_K" )
 
-  case "${REASONING_MODE:-$DEFAULT_REASONING}" in
-    on)     args+=( --reasoning on ) ;;
-    effort) args+=( --reasoning effort "${REASONING_EFFORT:-$DEFAULT_EFFORT}" ) ;;
-    *)      args+=( --reasoning off ) ;;
+  case "${MODE:-${REASONING_MODE:-$DEFAULT_REASONING}}" in
+    on)       args+=( --reasoning on ) ;;
+    budgeted) args+=( --reasoning on --reasoning-budget "${REASONING_BUDGET_DEFAULT:-8192}" ) ;;
+    max)      args+=( --reasoning on --reasoning-budget -1 ) ;;
+    effort)   args+=( --reasoning effort "${REASONING_EFFORT:-$DEFAULT_EFFORT}" ) ;;
+    *)        args+=( --reasoning off ) ;;
   esac
 
   MMPROJ="$(find "$MODEL_ROOT/$(basename "$(dirname "$MODEL_GGUF")")" \
@@ -479,7 +606,8 @@ printf '%s\n' \
   "ACTIVE_MODEL_NAME=\"$MODEL_NAME\"" \
   "ACTIVE_CTX=\"$CTX\"" \
   "ACTIVE_OUTPUT=\"$OUTPUT\"" \
-  "ACTIVE_REASONING=\"${REASONING_MODE:-$DEFAULT_REASONING}\"" \
+  "ACTIVE_MODE=\"$MODE\"" \
+  "ACTIVE_REASONING=\"$(mode_to_sync "$MODE")\"" \
   "ACTIVE_EFFORT=\"${REASONING_EFFORT:-$DEFAULT_EFFORT}\"" \
   "ACTIVE_ATTACHMENT=\"$ATTACH\"" \
   > "$ACTIVE_STATE"
@@ -493,7 +621,7 @@ if [ -x "$BIN_DIR/sync-local-model.sh" ]; then
     --model-name "$MODEL_NAME" \
     --context "$CTX" \
     --output "$OUTPUT" \
-    --reasoning "${REASONING_MODE:-$DEFAULT_REASONING}" \
+    --reasoning "$(mode_to_sync "$MODE")" \
     --effort "${REASONING_EFFORT:-$DEFAULT_EFFORT}" \
     --attachment "$ATTACH"
 else

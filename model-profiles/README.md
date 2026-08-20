@@ -31,6 +31,9 @@ Field reference (all optional unless marked required):
 | `MMPROJ_REPO` / `MMPROJ_PATTERN` | Multimodal projector: repo + filename fragment (`mmproj-F16` matches `mmproj-F16.gguf`). When both are set, install.sh downloads the projector and the launcher passes `--mmproj`, and the kilo model entry gets real image input (`attachment` + `modalities.input`). Leave both empty for text-only. |
 | `REASONING_MODE` | `off` (default), `on`, or `effort`. `effort` uses `REASONING_EFFORT`. Off preserves a tool-calling workload's measured token/latency budget. |
 | `REASONING_EFFORT` | `low` / `medium` / `high`, used when `REASONING_MODE=effort`. |
+| `REASONING_MODES` | Optional: comma-separated list of reasoning modes offered by the kilo-mode menu (e.g. `off,on,budgeted,max`). Absent = legacy single-mode behavior (only `off|on|effort`, no menu). May include `effort`. |
+| `REASONING_BUDGET_DEFAULT` | Optional: token budget for the `budgeted` mode (defaults to `8192`). Used only when `REASONING_MODES` includes `budgeted`. |
+| `REASONING_OUTPUT_MAX` | Optional: `-n` / Kilo `limit.output` for the `budgeted` and `max` modes. Ignored if `<=` the default output window (the output must be raised or the budget can never be spent). |
 | `KILO_TOOL_CALL` / `KILO_TEMPERATURE` | `yes` (default) / `no` - whether the kilo model entry advertises tool calling / temperature support. |
 | `KILO_MODEL_ID` | Optional kilo model id; defaults to the profile stem. |
 | `KILO_MODEL_NAME` | Optional display name in Kilo; defaults to `PROFILE_NAME`. |
@@ -87,3 +90,13 @@ from the profile: `reasoning` from `REASONING_MODE`, `options.reasoningEffort`
 from `REASONING_EFFORT`, `attachment`/`modalities` from `MMPROJ_*`, and
 `limit.context` from `RECOMMENDED_CTX_8GB` / `LLAMA_CTX_SIZE` (output from
 `LLAMA_N_PREDICT`).
+
+In kilo mode, `start-local-model.sh` resolves the effective reasoning mode at
+launch (`--mode <name>` > an interactive menu when `REASONING_MODES` offers
+more than one mode > the saved `REASONING_MODE`). `budgeted` and `max` emit
+`--reasoning on --reasoning-budget <N|-1>` and raise `-n`/`limit.output` to
+`REASONING_OUTPUT_MAX` (a budget larger than the output window can never be
+spent); the Kilo entry's `reasoning` field is derived from the mode
+(`off|effort` as-is, `on|budgeted|max` -> `on`). A mode switch always needs a
+llama-server restart - the running-mode guard in the fast path refuses a
+conflicting `--mode` rather than silently restarting an in-use server.
