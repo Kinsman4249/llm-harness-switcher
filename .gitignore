@@ -8,6 +8,10 @@ $HOME/
 bench/logs/
 bench/haystack*.json
 bench/*.result.*.json
+bench/coding_challenge_*.run.json
+bench/coding_challenge_*.result.json
+# coding-challenge snapshot is a transient hermetic copy of the repo tree
+bench/_challenge_repo/
 
 # Python bytecode caches are regenerable artifacts, never source
 __pycache__/
