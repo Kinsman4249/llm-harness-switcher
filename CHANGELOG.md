@@ -4,6 +4,10 @@ This file tracks real changes to this repository. Entries are grouped into numbe
 
 ## [Unreleased]
 
+### Changed
+
+- `start-local-model.sh` now offers the reasoning-mode picker (or honors `--mode`) even when a llama-server is already running and the active profile's `REASONING_MODES` lists more than one mode: picking a different mode stops and restarts the server on the same port, so the Kilo provider entry stays valid and no window reload is required. `ACTIVE_STATE` records the active `ACTIVE_PROFILE` so a later run can re-source the profile; state written before that field existed falls back to the model id.
+
 ## [2.3.0] - 2026-08-20
 
 ### Added

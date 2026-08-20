@@ -5,9 +5,10 @@
 # at runtime, so re-running install.sh is all that's needed to change it. The
 # whole kilo desktop flow in one script:
 #
-#   1. If a server is already healthy on the active runtime's port, skip to
-#      step 6 (a click just re-syncs the Kilo provider config without
-#      restarting anything).
+#   1. If a server is already healthy on the active runtime's port, and its
+#      profile lists a curated REASONING_MODES, offer that picker and restart
+#      on the same port if the user picks a different mode; otherwise just
+#      re-sync the Kilo provider config without starting anything.
 #   2. Scan for local models: GGUFs under $MODEL_ROOT/** (excluding drafter
 #      "mtp-*"/"*assistant*" and projector "mmproj-*" files), plus `ollama
 #      list` entries when ollama is installed.
@@ -25,9 +26,9 @@
 # Usage: start-local-model.sh [--profile <stem>] [--mode <name>]
 #   --profile <stem>  skip the model menu and start that profile directly
 #   --mode <name>     force the reasoning mode (off|on|budgeted|max|effort,
-#                     or a mode a profile's REASONING_MODES offers); ignored
-#                     (with a warning) if a mode switch would need a restart
-#                     of an already-running server
+#                     or a mode a profile's REASONING_MODES offers). When a
+#                     server is already running and this differs from its
+#                     current mode, it restarts on the same port.
 
 set -uo pipefail
 
@@ -91,7 +92,8 @@ while [ $# -gt 0 ]; do
       echo "than one mode, an interactive menu lets you pick one."
       echo "--mode <name> forces the reasoning mode directly. Valid names are"
       echo "the profile's REASONING_MODES (typically off|on|budgeted|max), or"
-      echo "the legacy off|on|effort when the profile sets none."
+      echo "the legacy off|on|effort when the profile sets none. On an"
+      echo "already-running server it restarts on the same port to apply it."
       exit 0
       ;;
     *) shift ;;
@@ -184,35 +186,121 @@ mode_desc() {
   esac
 }
 
-# --- Step 1: already running on the active port? Re-sync only. ---
+pick_mode() {
+  # $1 = preselect mode. Prompts from the global MODES array (built before the
+  # call by splitting a profile's REASONING_MODES); writes into global PICK_MODE.
+  # Bare Enter accepts the preselect; invalid input re-prompts.
+  local preselect="$1" i
+  echo
+  echo "Reasoning/thinking mode?"
+  for i in "${!MODES[@]}"; do
+    printf '  %d) %s - %s\n' "$((i+1))" "${MODES[$i]}" "$(mode_desc "${MODES[$i]}")"
+  done
+  echo "  (Enter) $preselect"
+  PICK_MODE=""
+  while [ -z "$PICK_MODE" ]; do
+    read -rp "Pick a mode: " PICK_MODE
+    if [ -z "$PICK_MODE" ]; then
+      PICK_MODE="$preselect"
+    elif [[ "$PICK_MODE" =~ ^[0-9]+$ ]] && [ "$PICK_MODE" -ge 1 ] && [ "$PICK_MODE" -le "${#MODES[@]}" ]; then
+      PICK_MODE="${MODES[$((PICK_MODE-1))]}"
+    else
+      logf "Invalid choice '$PICK_MODE' - enter 1-${#MODES[@]} or Enter for $preselect." >&2
+      PICK_MODE=""
+    fi
+  done
+}
+
+stop_llama_server() {
+  # $1 = port. Kills only a llama-server bound to that port, then waits for its
+  # health endpoint to go dark (so a following start_llama_server starts a real
+  # process instead of "reusing" the dying one).
+  local port="$1"
+  if [ "$PACKAGING" = "distrobox" ]; then
+    distrobox enter "$CONTAINER_NAME" -- pkill -f "llama-server.* --port $port" 2>/dev/null || true
+  else
+    pkill -f "llama-server.* --port $port" 2>/dev/null || true
+  fi
+  for _ in $(seq 1 10); do
+    runtime_healthy "$port" llama.cpp || return 0
+    sleep 1
+  done
+}
+
+# --- Step 1: already running? Offer a reasoning-mode switch / just re-sync. ---
 if [ -f "$ACTIVE_STATE" ]; then
   # shellcheck source=/dev/null
   source "$ACTIVE_STATE"
   if [ -n "${ACTIVE_PORT:-}" ] && [ -n "${ACTIVE_RUNTIME:-}" ] && runtime_healthy "$ACTIVE_PORT" "$ACTIVE_RUNTIME"; then
     logf "A model server is already running at ${ACTIVE_BASE_URL:-http://127.0.0.1:$ACTIVE_PORT/v1}."
     logf "  running mode: ${ACTIVE_MODE:-$(mode_to_sync "${ACTIVE_REASONING:-off}")}"
-    if [ -n "$CLI_MODE" ] && [ "$CLI_MODE" != "${ACTIVE_MODE:-${ACTIVE_REASONING:-off}}" ]; then
-      logf "--mode $CLI_MODE differs from the running mode; switching the reasoning"
-      logf "mode requires restarting llama-server. Stop the running server first "
-      logf "(the menu / --mode flags apply at a fresh start). Re-syncing the current server."
+
+    RESTART_MODE=""
+    # Only llama.cpp profiles with a curated REASONING_MODES list can switch
+    # thinking modes at all (the flags are emitted by start_llama_server).
+    if [ "$ACTIVE_RUNTIME" = "llama.cpp" ] || [ "$ACTIVE_RUNTIME" = "llama" ]; then
+      active_profile=""
+      active_stem=""
+      [ -n "${ACTIVE_PROFILE:-}" ] && { active_stem="$ACTIVE_PROFILE"; active_profile="$(find_profile_file "$ACTIVE_PROFILE")"; }
+      # Fallback for state written before ACTIVE_PROFILE existed: the model id
+      # is the profile stem for llama.cpp profiles.
+      if [ -z "$active_profile" ] && [ -n "${ACTIVE_MODEL_ID:-}" ]; then
+        active_profile="$(find_profile_file "$ACTIVE_MODEL_ID")"
+        [ -n "$active_profile" ] && active_stem="$ACTIVE_MODEL_ID"
+      fi
+      if [ -n "$active_profile" ] && [ -f "$active_profile" ] && [ -n "${ACTIVE_PORT:-}" ]; then
+        # shellcheck source=/dev/null
+        source "$active_profile"
+        if [ -n "${REASONING_MODES:-}" ]; then
+          IFS=',' read -r -a MODES <<< "$REASONING_MODES"
+          running_mode="${ACTIVE_MODE:-$(mode_to_sync "${ACTIVE_REASONING:-off}")}"
+          preselect="$running_mode"; preselect_ok=no
+          for m in "${MODES[@]}"; do [ "$m" = "$preselect" ] && preselect_ok=yes; done
+          [ "$preselect_ok" = "no" ] && preselect="${MODES[0]}"
+          if [ -z "$CLI_MODE" ] && [ "${#MODES[@]}" -gt 1 ]; then
+            pick_mode "$preselect"; RESTART_MODE="$PICK_MODE"
+          elif [ -n "$CLI_MODE" ]; then
+            mode_ok=no; for m in "${MODES[@]}"; do [ "$m" = "$CLI_MODE" ] && mode_ok=yes; done
+            if [ "$mode_ok" = "no" ]; then
+              echo "ERROR: --mode '$CLI_MODE' is not offered by ${ACTIVE_PROFILE:-unknown} (${MODES[*]})" >&2
+            else
+              RESTART_MODE="$CLI_MODE"
+            fi
+          else
+            RESTART_MODE="$preselect"
+          fi
+        fi
+      fi
     fi
-    logf "Re-syncing the Kilo provider config for it (no restart)."
-    if [ -x "$BIN_DIR/sync-local-model.sh" ]; then
-      "$BIN_DIR/sync-local-model.sh" \
-        --base-url "${ACTIVE_BASE_URL:-http://127.0.0.1:$ACTIVE_PORT/v1}" \
-        --api-key "$KILO_API_KEY" \
-        --model-id "${ACTIVE_MODEL_ID:-local}" \
-        --model-name "${ACTIVE_MODEL_NAME:-Local Model}" \
-        --context "${ACTIVE_CTX:-$DEFAULT_CTX}" \
-        --output "${ACTIVE_OUTPUT:-$DEFAULT_OUTPUT}" \
-        --reasoning "$(mode_to_sync "${ACTIVE_REASONING:-off}")" \
-        --effort "${ACTIVE_EFFORT:-$DEFAULT_EFFORT}" \
-        --attachment "${ACTIVE_ATTACHMENT:-no}"
+
+    if [ -n "$RESTART_MODE" ] && [ "$RESTART_MODE" != "${ACTIVE_MODE:-$(mode_to_sync "${ACTIVE_REASONING:-off}")}" ]; then
+      logf "Switching reasoning mode to '$RESTART_MODE' - restarting llama-server"
+      logf "on port $ACTIVE_PORT (same port, so the Kilo provider entry stays valid)."
+      stop_llama_server "$ACTIVE_PORT"
+      # Fall through to the fresh-start path with the active profile so the new
+      # mode is applied from the profile's own flag recipe (line 218 re-pins
+      # RUNTIME_PORT to the active port).
+      PROFILE_ARG="$active_stem"
+      CLI_MODE="$RESTART_MODE"
     else
-      logf "WARNING: $BIN_DIR/sync-local-model.sh not found - re-run install.sh." >&2
+      logf "Re-syncing the Kilo provider config for it (no restart)."
+      if [ -x "$BIN_DIR/sync-local-model.sh" ]; then
+        "$BIN_DIR/sync-local-model.sh" \
+          --base-url "${ACTIVE_BASE_URL:-http://127.0.0.1:$ACTIVE_PORT/v1}" \
+          --api-key "$KILO_API_KEY" \
+          --model-id "${ACTIVE_MODEL_ID:-local}" \
+          --model-name "${ACTIVE_MODEL_NAME:-Local Model}" \
+          --context "${ACTIVE_CTX:-$DEFAULT_CTX}" \
+          --output "${ACTIVE_OUTPUT:-$DEFAULT_OUTPUT}" \
+          --reasoning "$(mode_to_sync "${ACTIVE_REASONING:-off}")" \
+          --effort "${ACTIVE_EFFORT:-$DEFAULT_EFFORT}" \
+          --attachment "${ACTIVE_ATTACHMENT:-no}"
+      else
+        logf "WARNING: $BIN_DIR/sync-local-model.sh not found - re-run install.sh." >&2
+      fi
+      notify_kilo "Local model" "Already running - Kilo provider config re-synced. Reload/restart Kilo Code to apply."
+      exit 0
     fi
-    notify_kilo "Local model" "Already running - Kilo provider config re-synced. Reload/restart Kilo Code to apply."
-    exit 0
   fi
 fi
 [ -n "${ACTIVE_PORT:-}" ] && RUNTIME_PORT="${ACTIVE_PORT:-$RUNTIME_PORT}"
@@ -375,24 +463,7 @@ if [ -z "$CLI_MODE" ] && [ -z "$PROFILE_ARG" ] && \
   preselect_ok=no
   for m in "${MODES[@]}"; do [ "$m" = "$preselect" ] && preselect_ok=yes; done
   [ "$preselect_ok" = "no" ] && preselect="${MODES[0]}"
-  echo
-  echo "Reasoning/thinking mode for this run?"
-  for i in "${!MODES[@]}"; do
-    printf '  %d) %s - %s\n' "$((i+1))" "${MODES[$i]}" "$(mode_desc "${MODES[$i]}")"
-  done
-  echo "  (Enter) $preselect"
-  PICK_MODE=""
-  while [ -z "$PICK_MODE" ]; do
-    read -rp "Pick a mode: " PICK_MODE
-    if [ -z "$PICK_MODE" ]; then
-      PICK_MODE="$preselect"
-    elif [[ "$PICK_MODE" =~ ^[0-9]+$ ]] && [ "$PICK_MODE" -ge 1 ] && [ "$PICK_MODE" -le "${#MODES[@]}" ]; then
-      PICK_MODE="${MODES[$((PICK_MODE-1))]}"
-    else
-      logf "Invalid choice '$PICK_MODE' - enter 1-${#MODES[@]} or Enter for $preselect." >&2
-      PICK_MODE=""
-    fi
-  done
+  pick_mode "$preselect"
   MODE="$PICK_MODE"
 elif [ -n "$CLI_MODE" ]; then
   MODE="$CLI_MODE"
@@ -597,6 +668,15 @@ case "$MODEL_RUNTIME" in
   vllm) : ;;
 esac
 
+# Persist the active profile stem so a later fast-path run can re-source the
+# profile (and re-offer the reasoning-mode picker / restart) without a scan.
+ACTIVE_PROFILE_STEM=""
+if [ -n "${PROFILE_ARG:-}" ]; then
+  ACTIVE_PROFILE_STEM="$PROFILE_ARG"
+elif [ "$MODEL_RUNTIME" = "llama.cpp" ] && [ -n "${MODEL_GGUF:-}" ]; then
+  ACTIVE_PROFILE_STEM="$(basename "$(dirname "$MODEL_GGUF")")"
+fi
+
 mkdir -p "$STATE_DIR"
 printf '%s\n' \
   "ACTIVE_PORT=\"$PORT\"" \
@@ -610,6 +690,7 @@ printf '%s\n' \
   "ACTIVE_REASONING=\"$(mode_to_sync "$MODE")\"" \
   "ACTIVE_EFFORT=\"${REASONING_EFFORT:-$DEFAULT_EFFORT}\"" \
   "ACTIVE_ATTACHMENT=\"$ATTACH\"" \
+  "ACTIVE_PROFILE=\"$ACTIVE_PROFILE_STEM\"" \
   > "$ACTIVE_STATE"
 
 if [ -x "$BIN_DIR/sync-local-model.sh" ]; then
