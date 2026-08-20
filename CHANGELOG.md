@@ -2,6 +2,22 @@
 
 This file tracks real changes to this repository. Entries are grouped into numbered rounds of work, with each individual change getting its own running number rather than restarting at 1 per round.
 
+## [Unreleased]
+
+## [2.1.0] - 2026-08-20
+
+### Added
+
+- Added the Nemotron 3 Nano 30B-A3B re-verification harness under `bench/`, exercising the `/v1/chat/completions` endpoint against a fresh native CUDA `llama-server` build: `build_haystack_nemo.py` (token-depth-targeted, calibrates against the server's own `/tokenize`, inserts needles at 10/50/90% of the final text), `query_and_grade_nemo.py`, `tool_gate.py`, and `multiturn_gate.py`, with recorded runs in `bench/haystack_nemo_131072.json` and `bench/haystack_nemo_200000.json`. README.md's model table entry for the profile was updated to note the 2026-08-20 re-verification (needle retrieval 3/3 at 131K and 200K, tool-call gate 5/5 single-turn and 20/20 multi-turn, and the MoE `--fit` offload's ~21-22 GiB RSS load).
+
+### Changed
+
+- Renamed the repository to `llm-harness-switcher`, updating the README title, layout tree, and Quickstart/Updating URLs. The README now documents the on-demand LiteLLM proxy (`start-litellm-proxy.sh`/`stop-litellm-proxy.sh`, started by `claude-local-toggle.sh on` and stopped by `off`, with nothing auto-starting at login), the llama.cpp browser chat UI toggle (`LLAMA_ENABLE_WEBUI`, turning off `--no-webui` for a run), and refreshed the debug/log instructions to reference the proxy's on-disk log (`~/.local/state/litellm-proxy.log`) alongside the optional manual systemd unit.
+
+### Fixed
+
+- `install.d/60-llama-server-build.sh` now re-clones a stale non-repository `$HOME/llama.cpp` directory (a leftover from a failed or partial clone) instead of failing `git pull` with "not a git repository"; the fix applies to both the distrobox and native build paths.
+
 ### Kilo install mode, checked-in templates, model profiles move to presets (round thirty-three)
 
 104. `install.sh` now accepts `--mode classic|kilo`. Classic mode (the default) preserves the LiteLLM switcher exactly as before. Kilo mode installs a new, self-contained flow built around a **single** Kilo Code provider (`local-model`): `start-local-model.sh` scans for local models (GGUFs under `MODEL_ROOT` plus `ollama list`), lets you pick one (or `--profile <stem>`), starts it on its runtime (llama.cpp port 8080 / ollama 11434 / vllm 8000), waits on the runtime's health endpoint, smoke-tests one completion through `/v1`, and then - via `sync-local-model.sh` - rewrites the Kilo provider's one model entry (context, output, reasoning/effort, image modalities for multimodal profiles) to point at exactly the running model. `kilo.jsonc`/`kilo.json` is rewritten atomically (temp file + rename) with only the `provider.local-model` block and top-level `model` pointer touched, preserving the user's other settings; a sqlite-cache reminder tells the user to reload/restart Kilo Code so it re-reads the file. `uninstall.sh` gains matching mode-aware handling via `--classic`/`--kilo`/`--models`/`--all` flags - `remove_classic()` restores any `*.pre-install.bak` backups, and `remove_kilo_config()` (a jq filter) deletes the `provider.local-model` block and nulls the `model` pointer.
