@@ -39,7 +39,12 @@ generate_kilo_sync_script() {
   mkdir -p "$BIN_DIR"
   cp "$SCRIPT_DIR/sync-local-model.sh" "$BIN_DIR/sync-local-model.sh"
   chmod +x "$BIN_DIR/sync-local-model.sh"
-  log "Installed $BIN_DIR/sync-local-model.sh (from repo template)"
+  # Comment-preserving JSONC editor the sync script calls at runtime (kept
+  # next to the script in $BIN_DIR; resolves the config symlink to its
+  # git-tracked target and replaces the single local-model provider).
+  cp "$SCRIPT_DIR/kilo-jsonc-edit.py" "$BIN_DIR/kilo-jsonc-edit.py"
+  chmod +x "$BIN_DIR/kilo-jsonc-edit.py"
+  log "Installed $BIN_DIR/sync-local-model.sh + $BIN_DIR/kilo-jsonc-edit.py (from repo templates)"
 }
 
 # --- Install-time immediate sync, run after a successful start/test ---

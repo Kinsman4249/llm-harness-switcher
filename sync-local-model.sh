@@ -68,8 +68,8 @@ while [ $# -gt 0 ]; do
     --reasoning) shift; REASONING="${1:-}"; shift || true ;;
     --effort)    shift; EFFORT="${1:-}"; shift || true ;;
     --attachment) shift; ATTACHMENT="${1:-}"; shift || true ;;
-    --image-only) IMAGE_ONLY="yes" ;;
-    --debug)     DEBUG="yes" ;;
+    --image-only) IMAGE_ONLY="yes"; shift ;;
+    --debug)     DEBUG="yes"; shift ;;
     --help|-h)   usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
   esac
@@ -107,64 +107,46 @@ if [ ! -f "$KILO_CONFIG" ]; then
   echo "Created $KILO_CONFIG (didn't exist)."
 fi
 
-TMP_FILE="$(mktemp "${KILO_CONFIG}.XXXXXX")"
-trap 'rm -f "$TMP_FILE"' EXIT
-
-# Reference mode/permissions from the existing file if possible; fall back to
-# 0600 (this may hold a local API key). chmod --reference is GNU-coreutils.
-if chmod --reference="$KILO_CONFIG" "$TMP_FILE" 2>/dev/null; then
-  :
-else
-  chmod 0600 "$TMP_FILE"
+# Resolve a symlinked config to its real file so the atomic mv below updates
+# the tracked target (e.g. ~/.config/kilo/kilo.jsonc can be a symlink to a
+# git-tracked kilo.jsonc) instead of unlinking the symlink and replacing it
+# with a plain file. Creating the temp file next to the real target also
+# keeps the rename atomic on the target's filesystem.
+if [ -L "$KILO_CONFIG" ]; then
+  _real="$(readlink -f "$KILO_CONFIG")"
+  if [ -n "$_real" ]; then
+    [ "$DEBUG" = "yes" ] && printf '[sync] Resolved %s symlink -> %s\n' "$KILO_CONFIG" "$_real"
+    KILO_CONFIG="$_real"
+  fi
+  unset _real
 fi
 
-dbg() { [ "$DEBUG" = "yes" ] && printf '[sync] %s\n' "$*"; }
-
-# jq filter: single model entry, whole model map replaced so the provider
-# always has exactly the current model as the only option. `//=` fills a
-# missing provider name/npm without clobbering a hand-edited value; `=`
-# always refreshes baseURL/apiKey/models (those must reflect reality).
-# $provider etc. are passed via --arg (no string interpolation into jq).
-dbg "Writing $KILO_CONFIG: provider=$PROVIDER model=$MODEL_ID url=$BASE_URL"
-jq --arg provider "$PROVIDER" \
-  --arg url "$BASE_URL" \
-  --arg key "$API_KEY" \
-  --arg model_id "$MODEL_ID" \
-  --arg model_name "$MODEL_NAME" \
-  --arg context "$CONTEXT" \
-  --arg output "$OUTPUT" \
-  --arg reasoning "$REASONING" \
-  --arg effort "$EFFORT" \
-  --arg attachment "$ATTACHMENT" \
-  --arg image_only "$IMAGE_ONLY" '
-  .provider[$provider].name //= "Local Model" |
-  .provider[$provider].npm //= "@ai-sdk/openai-compatible" |
-  .provider[$provider].options.baseURL = $url |
-  .provider[$provider].options.apiKey = $key |
-  .provider[$provider].models = (
-    {($model_id): (
-        {name: $model_name,
-         tool_call: true,
-         temperature: true,
-         reasoning: ($reasoning != "off"),
-         limit: {context: ($context|tonumber), output: ($output|tonumber)}}
-        + (if $reasoning == "effort" then {options: {reasoningEffort: $effort}} else {} end)
-        + (if $attachment == "yes" then
-             (if $image_only == "yes"
-              then {attachment: true, modalities: {input: ["image"], output: ["text"]}}
-              else {attachment: true, modalities: {input: ["text","image"], output: ["text"]}}
-              end)
-           else {} end)
-    )}
-  ) |
-  .model = ($provider + "/" + $model_id)
-' "$KILO_CONFIG" > "$TMP_FILE" || {
-  echo "ERROR: jq failed to build the new config." >&2
+# Comment-preserving JSONC edit: the helper replaces the single local-model
+# provider value (and the top-level .model), so re-syncs never grow the file.
+# It resolves the config symlink to its tracked target, so the write lands in
+# the git-tracked kilo.jsonc and the ~/.config/kilo link stays intact.
+HELPER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HELPER="$HELPER_DIR/kilo-jsonc-edit.py"
+if [ ! -f "$HELPER" ]; then
+  echo "ERROR: $HELPER not found - re-run install.sh to ship it." >&2
+  exit 1
+fi
+[ "$DEBUG" = "yes" ] && printf '[sync] Writing %s: provider=%s model=%s url=%s\n' "$KILO_CONFIG" "$PROVIDER" "$MODEL_ID" "$BASE_URL"
+python3 "$HELPER" "$KILO_CONFIG" \
+  --provider "$PROVIDER" \
+  --api-key "$API_KEY" \
+  --base-url "$BASE_URL" \
+  --model-id "$MODEL_ID" \
+  --model-name "$MODEL_NAME" \
+  --context "$CONTEXT" \
+  --output "$OUTPUT" \
+  --reasoning "$REASONING" \
+  --effort "$EFFORT" \
+  --attachment "$ATTACHMENT" \
+  --image-only "$IMAGE_ONLY" || {
+  echo "ERROR: failed to edit $KILO_CONFIG." >&2
   exit 1
 }
-
-mv "$TMP_FILE" "$KILO_CONFIG"
-trap - EXIT
 
 echo
 echo "Synced Kilo provider '$PROVIDER' to: $MODEL_NAME ($MODEL_ID)"
