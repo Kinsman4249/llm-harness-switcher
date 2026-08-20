@@ -12,7 +12,7 @@ private presets repo `8gb-immutable-fedora-presets` (see install.sh's
 
 ## Authoring a profile
 
-Copy `gemma4-e2b.sh` (or an existing profile from the presets repo) and edit
+Copy `gemma4-e2b.sh` (or an existing profile from a presets repo) and edit
 it. The filename stem becomes the profile id (`MODEL_PROFILE`, the folder
 name under `$MODEL_ROOT`), so make it short and dash-lowercase, e.g.
 `my-model-3b.sh`.
