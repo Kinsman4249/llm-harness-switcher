@@ -25,7 +25,7 @@ It does not try to be a hybrid router that transparently falls back to cloud whe
 | Effective params | 9B | 9B | 2.3B | 4.5B | 4B | 3B active / token (30B total, MoE) |
 | Params incl. embeddings | 9B | 9B | 5.1B | 8B | 4B | 30B |
 | Layers | 32 | 32 | 35 | 42 | 42 | 52 (23 Mamba-2 + 23 MoE + 6 attention) |
-| Max context tested on an 8GB card | 131072 (Q4_K_M, needs heavier CPU offload than default - see below) | 131072 (Q4_K_M, needs heavier CPU offload than default - see below; NOT yet live-benchmarked, see `model-profiles/qwen35-9b-defiant-fable.sh`) | 128K | 128K | 131072 | 262144 |
+| Max context tested on an 8GB card | 131072 (Q4_K_M, needs heavier CPU offload than default - see below) | 131072 (Q4_K_M, needs heavier CPU offload than default - see below; NOT yet live-benchmarked, see `model-profiles/qwen35-9b-defiant-fable.sh`) | 128K | 128K | 131072 | 262144 (fits to 1M on build d59d455fd, but kept at 262144 - quality gate fails past the 256K training window; see `bench/ctx-ceiling-results.md`) |
 | Tau2 tool-use average | - | - | 24.5% | 42.2% | - | - |
 | LiveCodeBench v6 | - | - | 44.0% | 52.0% | - | - |
 | Speculative decoding | self-contained MTP head | self-contained MTP head | separate drafter (UNVERIFIED filenames) | separate drafter (UNVERIFIED filenames) | none | none |
