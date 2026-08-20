@@ -4,6 +4,22 @@ This file tracks real changes to this repository. Entries are grouped into numbe
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-08-20
+
+### Added
+
+- Added a comment-preserving JSONC editor helper (`kilo-jsonc-edit.py`) that updates the single `local-model` provider and the top-level `model` value in the Kilo JSONC config without touching comments, other providers, or formatting.
+
+### Changed
+
+- Reworked `sync-local-model.sh` to use the new JSONC editor instead of rewriting the config with `jq`, so re-syncs replace rather than grow the provider entry and comments are preserved.
+- Updated `install.d/85-kilo-sync.sh` to install the new `kilo-jsonc-edit.py` helper alongside the sync script.
+- Refined the wording in the model-profiles authoring instructions (`model-profiles/README.md`).
+
+### Fixed
+
+- Fixed the `--image-only` and `--debug` flag parsing in `sync-local-model.sh` to advance the argument position correctly.
+
 ## [2.1.0] - 2026-08-20
 
 ### Added
