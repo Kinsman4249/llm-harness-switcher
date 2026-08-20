@@ -97,6 +97,18 @@ more than one mode > the saved `REASONING_MODE`). `budgeted` and `max` emit
 `--reasoning on --reasoning-budget <N|-1>` and raise `-n`/`limit.output` to
 `REASONING_OUTPUT_MAX` (a budget larger than the output window can never be
 spent); the Kilo entry's `reasoning` field is derived from the mode
-(`off|effort` as-is, `on|budgeted|max` -> `on`). A mode switch always needs a
-llama-server restart - the running-mode guard in the fast path refuses a
-conflicting `--mode` rather than silently restarting an in-use server.
+(`off|effort` as-is, `on|budgeted|max` -> `on`).
+
+**This switcher is NOT Kilo Shift+Tab.** These models (Gemma, Nemotron, and
+this project's other profiles) toggle thinking server-side through the
+`enable_thinking` chat-template kwarg, which `--reasoning` sets once at server
+start - there is no per-request knob. Kilo's Shift+Tab only cycles per-request
+reasoning-effort *variants* for models that advertise them (and mark
+`supportsReasoningEffort`); it cannot drive this project's server-side
+thinking at all. The only ways to switch a mode are:
+  1. `start-local-model.sh --mode <name>` at a fresh start, or
+  2. the interactive menu on a fresh launch (presented when `REASONING_MODES`
+     lists more than one mode).
+Either requires a llama-server restart: the running-mode guard on the fast
+path re-syncs the current server and refuses a conflicting `--mode` rather
+than silently restarting an in-use server.

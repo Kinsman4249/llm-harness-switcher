@@ -58,6 +58,39 @@ MMPROJ_PATTERN="mmproj-F16"
 REASONING_MODE="off"                             # off | on | effort
 REASONING_EFFORT="low"                           # low | medium | high (used when REASONING_MODE=effort)
 
+# Reasoning-mode switcher (kilo mode only). When REASONING_MODES lists more
+# than one mode, start-local-model.sh lets each launch pick a mode and shows an
+# interactive menu (or `--profile <stem> --mode <name>` forces one
+# non-interactively). This is the ONLY place a Gemma/Nemotron thinking mode is
+# switched - it is NOT exposed via Kilo's Shift+Tab.
+#
+# Kilo's Shift+Tab reasoning-effort variants only cycle per-request effort for
+# models whose chat template advertises a client-side effort level (and only
+# when the model advertises supportsReasoningEffort). Gemma 4 and Nemotron (and
+# this project's other profiles) toggle reasoning server-side via the
+# enable_thinking chat-template kwarg, which `--reasoning` sets once at server
+# start - there is no per-request knob, so Shift+Tab cannot drive it. See
+# model-profiles/README.md "Kilo model entry" for the full mechanism.
+#
+# Mode switches therefore require a llama-server RESTART: the resolved mode is
+# baked into the server's --reasoning flag at load. With a server already
+# healthy, start-local-model.sh re-syncs the running config and refuses a
+# conflicting --mode (it prints "switching the reasoning mode requires
+# restarting llama-server") rather than silently restarting an in-use server.
+#
+# A profile that sets none of the REASONING_* menu fields keeps the legacy
+# single-mode behavior above (off|on|effort, no menu). This shipped example
+# shows the fields as the reference; Gemma's template also honors the legacy
+# "effort" level, so it is offered here alongside off/on.
+REASONING_MODES="off,on,effort"
+# budgeted/max (as Nemotron's profile uses): "budgeted" is `--reasoning on
+# --reasoning-budget <REASONING_BUDGET_DEFAULT>`, "max" is `--reasoning on
+# --reasoning-budget -1`; both raise -n / Kilo limit.output to
+# REASONING_OUTPUT_MAX (a budget larger than the output window can never be
+# spent). A profile that wants to offer them sets these two fields too.
+# REASONING_BUDGET_DEFAULT="8192"
+# REASONING_OUTPUT_MAX="16384"
+
 # Kilo Code provider entry capability flags and identity (see the generated
 # start-local-model.sh / sync-local-model.sh). KILO_MODEL_ID defaults to this
 # file's stem, KILO_MODEL_NAME defaults to PROFILE_NAME if left empty.
