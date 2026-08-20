@@ -4,15 +4,22 @@ This file tracks real changes to this repository. Entries are grouped into numbe
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-08-20
+
 ### Added
 
-- Added a kilo-mode reasoning-mode switcher to `start-local-model.sh`: a new `--mode <name>` flag and an interactive menu at launch. `start-local-model.sh` resolves the effective mode as `--mode` > menu > saved `REASONING_MODE`; `budgeted`/`max` map to `--reasoning on --reasoning-budget <N|-1>` and raise the output window to `REASONING_OUTPUT_MAX`, and the Kilo entry's `reasoning` field is derived and synced. Documented that this switcher is NOT Kilo Shift+Tab and a mode change always needs a llama-server restart.
+- Added a kilo-mode reasoning-mode switcher to `start-local-model.sh`: a new `--mode <name>` flag and an interactive menu at launch. `start-local-model.sh` resolves the effective mode as `--mode` > menu > saved `REASONING_MODE`; `budgeted`/`max` map to `--reasoning on --reasoning-budget <N|-1>` and raise the output window to `REASONING_OUTPUT_MAX`, and the Kilo entry's `reasoning` field is derived and synced. Documented that this switcher is not Kilo Shift+Tab and a mode change always needs a llama-server restart.
 - Added `bench/ctx-ceiling.sh` (fits/ramp/gate subcommands) and `bench/ctx-ceiling-results.md` for measuring the real maximum KV-context ceiling per profile on the RTX 3080 8GB reference card.
-- Updated the shipped `gemma4-e2b.sh` example to carry the `REASONING_MODES` / `REASONING_BUDGET_DEFAULT` / `REASONING_OUTPUT_MAX` fields and document the riming-mode switcher (CLI/menu + restart) vs. Kilo Shift+Tab.
+- Updated the shipped `gemma4-e2b.sh` example to carry the `REASONING_MODES` / `REASONING_BUDGET_DEFAULT` / `REASONING_OUTPUT_MAX` fields and document the reasoning-mode switcher (CLI/menu + restart) vs. Kilo Shift+Tab.
 
 ### Changed
 
-- `model-profiles/nemotron3-nano-30b.sh` gains a 2026-08-20 CONFIRMED block summarizing the beyond-256K ceiling sweep: plain `-c` past 262144 is honored on build d59d455fd (cap at 1048576, not n_ctx_train), VRAM barely moves, but the quality gate fails just past the 256K training window - so `RECOMMENDED_CTX_8GB` stays 262144.
+- Recorded the nemotron3-nano-30b beyond-256K ceiling sweep: plain `-c` past 262144 is honored on build d59d455fd (cap at 1048576, not n_ctx_train) and VRAM barely moves, but the quality gate fails just past the 256K training window - so `RECOMMENDED_CTX_8GB` stays 262144. Updated the README "Max context tested on an 8GB card" cell and added the sweep results; the profile CONFIRMED block lives in the private presets repo.
+- `bench/haystack*.json` prompt builds are now gitignored and no longer tracked (they are regenerable, and their size tripped scrub tooling).
+
+### Fixed
+
+- Fixed the `gate` subcommand's pass detection in `bench/ctx-ceiling.sh`: it string-parsed the grader output and compared Python's capitalized `True` against a lowercase literal, so a passing run was labelled FAIL-Q. It now reads the grade JSON directly.
 
 ## [2.2.0] - 2026-08-20
 
