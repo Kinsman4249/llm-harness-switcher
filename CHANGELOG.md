@@ -4,6 +4,73 @@ This file tracks real changes to this repository. Entries are grouped into numbe
 
 ## [Unreleased]
 
+### Added
+
+- The launcher gains a first-class `--context` CLI flag: `start-local-model.sh`
+  now resolves the context window as `--context > interactive menu > native default`
+  against the profile's `CTX_MODES` array, records the chosen mode in
+  `ACTIVE_CTX_MODE` (with a `--context` switch restarting a running server on
+  the same port, parallel to the reasoning-mode switch), and emits YaRN
+  rope-scaling / override-kv ONLY for a yarn rung so the native window stays
+  opt-in-free. New `pick_ctx()` in `start-local-model-lib.sh` backs the
+  interactive menu. Profiles without a `CTX_MODES` array are untouched
+  (single native window, legacy `ROPE_YARN_*` honored).
+- Tracked showcase profile `model-profiles/ornith-1.5-35b-a3b.sh` (moved here
+  from the private presets repo 2026-08-23). It is the feature-complete
+  demonstration profile - `CTX_MODES` (native 262144 default + opt-in YaRN x2
+  524288), a `REASONING_MODES` menu, speculative-decoding A/B results
+  (`mtpdraft-Q8_0` measured and losing, kept reproducible via
+  `DRAFT_REPO`/`DRAFT_PATTERN`), multimodal input (`MMPROJ_*`), and
+  `NGL_MODE=fit` - all live-measured on an RTX 3080 8GB/32GB box. New
+  `model-profiles/` `.gitignore` allows it (and `gemma4-e2b.sh`) while private
+  profiles stay untracked; README gains a "Showcase profile" walkthrough.
+- `bench/reap-speed-sweep.sh` + `bench/reap-speed-sweep.md`: Track B speed
+  sweep driver and narrative for REAP-40B-A3B. Confirmed new default **Q4_K_S +
+  q4_0/q4_0 KV cache** (27.41 vs 23.64 t/s vs the old Q4_K_M+q8_0/q8_0,
+  same-session head-to-head, new build `c060ca974`) with a 5/5 tool-gate pass;
+  rows land in `bench/ctx-ceiling-results.md`. This re-opened the symmetric
+  q4_0/q4_0 KV on qwen3next and found it faster, not just smaller.
+
+### Fixed
+
+- The kilo launcher now prefers each profile's `RECOMMENDED_CTX_8GB` over the
+  global/cooked-in `LLAMA_CTX_SIZE` when resolving the server context. At
+  install time the harness bakes the first-installed profile's ctx into the
+  global `LLAMA_CTX_SIZE`, and that stale value would silently re-cap any
+  profile whose `RECOMMENDED_CTX_8GB` was raised later (nemotron 442368,
+  Ornith YaRN 524288) - the hand-served window and Kilo provider entry stayed
+  at the old ceiling until the config was hand-cleared. `LLAMA_CTX_SIZE` still
+  applies for unmatched/raw models that set no `RECOMMENDED_CTX_8GB`.
+
+## [2.6.0] - 2026-08-23
+
+### Added
+
+- The launcher gains a first-class `--context` CLI flag: `start-local-model.sh`
+  now resolves the context window as `--context > interactive menu > native default`
+  against the profile's `CTX_MODES` array, records the chosen mode in
+  `ACTIVE_CTX_MODE` (with a `--context` switch restarting a running server on
+  the same port, parallel to the reasoning-mode switch), and emits YaRN
+  rope-scaling / override-kv ONLY for a yarn rung so the native window stays
+  opt-in-free. New `pick_ctx()` in `start-local-model-lib.sh` backs the
+  interactive menu. Profiles without a `CTX_MODES` array are untouched
+  (single native window, legacy `ROPE_YARN_*` honored).
+- Tracked showcase profile `model-profiles/ornith-1.5-35b-a3b.sh` (moved here
+  from the private presets repo 2026-08-23). It is the feature-complete
+  demonstration profile - `CTX_MODES` (native 262144 default + opt-in YaRN x2
+  524288), a `REASONING_MODES` menu, speculative-decoding A/B results
+  (`mtpdraft-Q8_0` measured and losing, kept reproducible via
+  `DRAFT_REPO`/`DRAFT_PATTERN`), multimodal input (`MMPROJ_*`), and
+  `NGL_MODE=fit` - all live-measured on an RTX 3080 8GB/32GB box. New
+  `model-profiles/` `.gitignore` allows it (and `gemma4-e2b.sh`) while private
+  profiles stay untracked; README gains a "Showcase profile" walkthrough.
+- `bench/reap-speed-sweep.sh` + `bench/reap-speed-sweep.md`: Track B speed
+  sweep driver and narrative for REAP-40B-A3B. Confirmed new default **Q4_K_S +
+  q4_0/q4_0 KV cache** (27.41 vs 23.64 t/s vs the old Q4_K_M+q8_0/q8_0,
+  same-session head-to-head, new build `c060ca974`) with a 5/5 tool-gate pass;
+  rows land in `bench/ctx-ceiling-results.md`. This re-opened the symmetric
+  q4_0/q4_0 KV on qwen3next and found it faster, not just smaller.
+
 ### Fixed
 
 - The kilo launcher now prefers each profile's `RECOMMENDED_CTX_8GB` over the
