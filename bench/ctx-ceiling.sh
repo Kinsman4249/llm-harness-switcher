@@ -30,7 +30,7 @@
 # BUILD_STAMP: which build of the harness + the llama.cpp binary produced results.
 set -uo pipefail
 
-BUILD_STAMP="ctx-ceiling.sh build 2026-08-20.1"
+BUILD_STAMP="ctx-ceiling.sh build 2026-08-23.2"
 DEBUG="${DEBUG:-1}"
 
 BENCH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -172,6 +172,23 @@ build_llama_args() {
   # shellcheck source=/dev/null
   source "$profile_file"
   LLAMA_CPU_FFN_LAYERS="${LLAMA_CPU_FFN_LAYERS:-${LLAMA_CPU_FFN_LAYERS_RECOMMENDED:-0}}"
+  # Context extension mode selection: when the profile declares CTX_MODES
+  # (`name|ctx|yarn_factor|arch_key` rows), honor the harness's optional
+  # CTX_MODE env (default 'native' = no rope). This lets the harness exercise
+  # a YaRN rung for the profiles that moved their YaRN recipe into CTX_MODES
+  # (ornith, qwen3-coder-next, reap) while keeping the native window default.
+  local _extmode="" _extmyarn="" _extmkey=""
+  if [ "${CTX_MODES+x}" = "x" ] && [ "${#CTX_MODES[@]}" -gt 0 ]; then
+    local _wanted="${CTX_MODE:-native}" _cm
+    for _cm in "${CTX_MODES[@]}"; do
+      if [ "${_cm%%|*}" = "$_wanted" ]; then
+        ctx="$(echo "$_cm" | cut -d'|' -f2)"
+        _extmyarn="$(echo "$_cm" | cut -d'|' -f3)"
+        _extmkey="$(echo "$_cm" | cut -d'|' -f4)"
+        break
+      fi
+    done
+  fi
   local -a args=()
   args+=( "$LLAMA_BIN" -m "$gguf" -c "$ctx" -b "$DEFAULT_BATCH" -n "$DEFAULT_OUTPUT" )
   args+=( -fa on --cache-type-k "${CACHE_TYPE_K:-q8_0}" --cache-type-v "${CACHE_TYPE_V:-q8_0}" )
@@ -204,15 +221,23 @@ build_llama_args() {
       draft="$(find "$MODEL_ROOT/$(basename "$(dirname "$gguf")")" \
         -maxdepth 1 -iname "*${DRAFT_PATTERN:-}*.gguf" 2>/dev/null | head -n1)"
       if [ -n "$draft" ]; then
-        args+=( -md "$draft" --spec-type draft-mtp --spec-draft-n-max "${LLAMA_SPEC_DRAFT_N:-2}" -ngld 0 )
+        args+=( -md "$draft" --spec-type draft-mtp --spec-draft-n-max "${LLAMA_SPEC_DRAFT_N:-2}" -ngld "${LLAMA_SPEC_DRAFT_NGLD:-0}" )
+        [ -n "${LLAMA_SPEC_DRAFT_N_MIN:-}" ] && args+=( --spec-draft-n-min "$LLAMA_SPEC_DRAFT_N_MIN" )
       fi ;;
   esac
   [ -n "${DEFAULT_TEMP:-}" ]  && args+=( --temp "$DEFAULT_TEMP" )
   [ -n "${DEFAULT_TOP_P:-}" ] && args+=( --top-p "$DEFAULT_TOP_P" )
   [ -n "${DEFAULT_TOP_K:-}" ] && args+=( --top-k "$DEFAULT_TOP_K" )
-  # YaRN past the profile's n_ctx_train (ROPE_YARN_* fields). Without these, -c
-  # > n_ctx_train is capped/rejected; --override-kv raises the GGUF context_length.
-  if [ -n "${ROPE_YARN_FACTOR:-}" ] && [ -n "${ROPE_YARN_ORIG_CTX:-}" ]; then
+  # Context extension (rope/YaRN): CTX_MODE-selected row (from CTX_MODES) or
+  # legacy static ROPE_YARN_* fields. The CTX_MODE path already set $ctx to the
+  # mode's targeted window and recorded _extmyarn/_extmkey at the top; native
+  # mode emits no rope. Legacy fields still win for profiles that set them.
+  if [ -n "$_extmyarn" ] && [ -n "$_extmkey" ]; then
+    # yarn-orig-ctx = native window = targeted ctx / factor (e.g. 524288/2).
+    local _orig=$(( ctx / _extmyarn ))
+    args+=( --rope-scaling yarn --rope-scale "$_extmyarn" --yarn-orig-ctx "$_orig" )
+    args+=( --override-kv "$_extmkey=int:$ctx" )
+  elif [ -n "${ROPE_YARN_FACTOR:-}" ] && [ -n "${ROPE_YARN_ORIG_CTX:-}" ]; then
     args+=( --rope-scaling yarn --rope-scale "$ROPE_YARN_FACTOR" --yarn-orig-ctx "$ROPE_YARN_ORIG_CTX" )
   fi
   [ -n "${ROPE_YARN_OVERRIDE_KV:-}" ] && args+=( --override-kv "$ROPE_YARN_OVERRIDE_KV" )
@@ -340,6 +365,40 @@ gate() {
   log "--- raw grade ---"; echo "$out" >> "$RUN_LOG"
 }
 
+# timing: against an already-running server (started by `fits` so the flag
+# recipe + fit/VRAM/RSS are already recorded), send N short non-thinking
+# single-shot completions at temp 0 and report decode t/s (avg over the reps)
+# plus, when speculative decoding is active, the mean accepted-draft length
+# from llama-server's `timings`. This is the qwen-bench-style decode timing the
+# Ornith spec A/B and REAP speed sweep use; the plan windows on decode t/s over
+# the no-draft baseline. Extra llama args are not allowed here -- pass them to
+# the `fits`/`gate` call that starts the server instead.
+timing() {
+  local label="$1" gguf="$2" reps="${3:-5}" n_pred="${4:-200}"
+  log "=== timing $label $(basename "$gguf") reps=$reps n_pred=$n_pred ==="
+  local i total=0 pred_per_s accept done accept run accept_sum=0 draft_sum=0
+  local resp debug_payload
+  for i in $(seq 1 "$reps"); do
+    resp=$(curl -s -m 120 "http://127.0.0.1:$PORT/completion" \
+      -H "Content-Type: application/json" \
+      -d "{\"prompt\":\"Write a short function that returns the median of a numeric list, in Python.\",\"n_predict\":$n_pred,\"temperature\":0,\"seed\":42,\"cache_prompt\":false}")
+    pred_per_s=$(echo "$resp" | python3 -c "import json,sys;d=json.load(sys.stdin);print(d.get('timings',{}).get('predicted_per_second',0))" 2>/dev/null || echo "0")
+    accept=$(echo "$resp" | python3 -c "import json,sys;d=json.load(sys.stdin);t=d.get('timings',{});print(t.get('n_draft_accepted',0)+t.get('draft_n_accepted',0))" 2>/dev/null || echo "0")
+    done=$(echo "$resp" | python3 -c "import json,sys;d=json.load(sys.stdin);print(d.get('timings',{}).get('predicted_n',0))" 2>/dev/null || echo "0")
+    debug_payload=$(echo "$resp" | python3 -c "import json,sys;print(json.dumps(json.load(sys.stdin).get('timings',{})))" 2>/dev/null)
+    debug "rep $i timings: $debug_payload"
+    log "  rep $i: predicted_n=$done decode_tok_s=$pred_per_s n_draft_accepted=${accept:-0}"
+    total=$(awk -v a="$total" -v b="$pred_per_s" 'BEGIN{printf "%.3f", a+b}')
+    draft_sum=$(awk -v a="$draft_sum" -v b="${accept:-0}" 'BEGIN{printf "%.3f", a+b}')
+  done
+  local avg
+  avg=$(awk -v t="$total" -v n="$reps" 'BEGIN{printf "%.2f", t/n}')
+  local avg_acc
+  avg_acc=$(awk -v t="$draft_sum" -v n="$reps" 'BEGIN{printf "%.2f", t/n}')
+  log "[timing $label] avg_decode_tok_s=$avg avg_draft_accepted=${avg_acc}"
+  echo "| $label | $(basename "$gguf") | $BLD | n/a | $avg | n/a | n/a | n/a | n/a | n/a |" >> "$RESULTS_MD"
+}
+
 ensure_header() {
   [ -f "$RESULTS_MD" ] && return
   {
@@ -358,13 +417,15 @@ ensure_header() {
 cmd_fits()  { ensure_header; fits "$@"; }
 cmd_ramp()  { ramp "$@"; }
 cmd_gate()  { gate "$@"; }
+cmd_timing() { ensure_header; timing "$@"; }
 
 case "${1:-}" in
   fits) shift; cmd_fits "$@" ;;
   ramp) shift; cmd_ramp "$@" ;;
   gate) shift; cmd_gate "$@" ;;
+  timing) shift; cmd_timing "$@" ;;
   *)
-    echo "Usage: $0 {fits PROFILE GGUF CTX [extra...] | ramp PROFILE GGUF [start] [extra...] | gate PROFILE GGUF CTX LABEL}"
+    echo "Usage: $0 {fits PROFILE GGUF CTX [extra...] | ramp PROFILE GGUF [start] [extra...] | gate PROFILE GGUF CTX LABEL | timing LABEL GGUF [REPS] [N_PRED]}"
     exit 1
     ;;
 esac

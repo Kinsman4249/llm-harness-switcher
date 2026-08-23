@@ -64,3 +64,44 @@ blocks and the README table row "Max context tested on an 8GB card").
 | nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_K_M.gguf | d59d455fd | 4096 | PASS | 4096 | 6305MiB | 23.2 | n/a | n/a |
 | ornith-1.5-35b-a3b | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | 524288 | PASS | 524288 | 6403MiB | 23.2 | n/a | n/a |
 | ornith-q4km-524k | ornith-1.5-35b-a3b | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | 524288 | FAIL-Q | 524288 | 6443 | 21.1 | /3 |
+| ornith-1.5-35b-a3b | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | 262144 | PASS | 262144 | 6526MiB | 20.3 | n/a | n/a |
+| ornith-native262k-reasonoff-baseline | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | n/a | 34.21 | n/a | n/a | n/a | n/a | n/a |
+| ornith-1.5-35b-a3b | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | 524288 | PASS | 524288 | 6404MiB | 23.2 | n/a | n/a |
+| ornith-yarn524k-reasonoff-baseline | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | n/a | 20.51 | n/a | n/a | n/a | n/a | n/a |
+| ornith-1.5-35b-a3b | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | 262144 | PASS | 262144 | 6526MiB | 20.3 | n/a | n/a |
+| ornith-native262k-budgeted-baseline | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | n/a | 35.72 | n/a | n/a | n/a | n/a | n/a |
+| ornith-1.5-35b-a3b | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | 262144 | PASS | 262144 | 5588MiB | 25.0 | n/a | n/a |
+| ornith-native262k-draft-nmax4 | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | n/a | 14.28 | n/a | n/a | n/a | n/a | n/a |
+| ornith-1.5-35b-a3b | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | 262144 | PASS | 262144 | 5576MiB | 24.3 | n/a | n/a |
+| ornith-native262k-draft-nmax4-gpu | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | n/a | 18.51 | n/a | n/a | n/a | n/a | n/a |
+| ornith-1.5-35b-a3b | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | 262144 | PASS | 262144 | 6218MiB | 23.5 | n/a | n/a |
+| ornith-native262k-draft-nmax1-gpu | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | n/a | 24.10 | n/a | n/a | n/a | n/a | n/a |
+| ornith-1.5-35b-a3b | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | 262144 | PASS | 262144 | 5950MiB | 24.0 | n/a | n/a |
+| ornith-native262k-draft-nmax2-gpu | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | n/a | 21.87 | n/a | n/a | n/a | n/a | n/a |
+| ornith-1.5-35b-a3b | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | 262144 | PASS | 262144 | 5876MiB | 24.3 | n/a | n/a |
+| ornith-native262k-draft-nmax3-gpu | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | n/a | 18.92 | n/a | n/a | n/a | n/a | n/a |
+| ornith-1.5-35b-a3b | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | 262144 | PASS | 262144 | 5088MiB | 25.2 | n/a | n/a |
+| ornith-native262k-draft-nmax6-gpu | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | n/a | 14.26 | n/a | n/a | n/a | n/a | n/a |
+| ornith-1.5-35b-a3b | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | 524288 | PASS | 524288 | 6042MiB | 24.2 | n/a | n/a |
+| ornith-yarn524k-draft-nmax1-gpu | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | n/a | 17.11 | n/a | n/a | n/a | n/a | n/a |
+| ornith-1.5-35b-a3b | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | 524288 | PASS | 524288 | 5642MiB | 22.8 | n/a | n/a |
+| ornith-yarn524k-draft-nmax4-gpu | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | n/a | 15.34 | n/a | n/a | n/a | n/a | n/a |
+| qwen3-coder-next-reap-40b | Qwen3-Coder-Next-REAP-40B-A3B.i1-Q4_K_M.gguf | c060ca974 | 262144 | PASS | 262144 | 6490MiB | 18.4 | n/a | n/a |
+| qwen3-coder-next-reap-40b | Qwen3-Coder-Next-REAP-40B-A3B.i1-Q4_K_M.gguf | c060ca974 | 262144 | PASS | 262144 | 6490MiB | 24.1 | n/a | n/a |
+| REAP baseline | Qwen3-Coder-Next-REAP-40B-A3B.i1-Q4_K_M.gguf | c060ca974 | n/a | 22.77 | n/a | n/a | n/a | n/a | n/a |
+| qwen3-coder-next-reap-40b | Qwen3-Coder-Next-REAP-40B-A3B.i1-Q4_K_M.gguf | c060ca974 | 262144 | PASS | 262144 | 6490MiB | 24.1 | n/a | n/a |
+| REAP kv=q8_0/q8_0 | Qwen3-Coder-Next-REAP-40B-A3B.i1-Q4_K_M.gguf | c060ca974 | n/a | 28.13 | n/a | n/a | n/a | n/a | n/a |
+| qwen3-coder-next-reap-40b | Qwen3-Coder-Next-REAP-40B-A3B.i1-Q4_K_M.gguf | c060ca974 | 262144 | PASS | 262144 | 6476MiB | 23.9 | n/a | n/a |
+| REAP kv=q4_0/q4_0 | Qwen3-Coder-Next-REAP-40B-A3B.i1-Q4_K_M.gguf | c060ca974 | n/a | 31.78 | n/a | n/a | n/a | n/a | n/a |
+| qwen3-coder-next-reap-40b | Qwen3-Coder-Next-REAP-40B-A3B.i1-Q4_K_M.gguf | c060ca974 | 262144 | PASS | 262144 | 6476MiB | 23.9 | n/a | n/a |
+| REAP quant=Q4_K_M | Qwen3-Coder-Next-REAP-40B-A3B.i1-Q4_K_M.gguf | c060ca974 | n/a | 26.28 | n/a | n/a | n/a | n/a | n/a |
+| qwen3-coder-next-reap-40b | Qwen3-Coder-Next-REAP-40B-A3B.i1-IQ4_XS.gguf | c060ca974 | 262144 | PASS | 262144 | 6534MiB | 21.0 | n/a | n/a |
+| REAP quant=IQ4_XS | Qwen3-Coder-Next-REAP-40B-A3B.i1-IQ4_XS.gguf | c060ca974 | n/a | 27.57 | n/a | n/a | n/a | n/a | n/a |
+| qwen3-coder-next-reap-40b | Qwen3-Coder-Next-REAP-40B-A3B.i1-Q4_K_S.gguf | c060ca974 | 262144 | PASS | 262144 | 6552MiB | 22.5 | n/a | n/a |
+| REAP quant=Q4_K_S | Qwen3-Coder-Next-REAP-40B-A3B.i1-Q4_K_S.gguf | c060ca974 | n/a | 28.26 | n/a | n/a | n/a | n/a | n/a |
+| qwen3-coder-next-reap-40b | Qwen3-Coder-Next-REAP-40B-A3B.i1-Q4_K_S.gguf | c060ca974 | 262144 | PASS | 262144 | 6556MiB | 22.5 | n/a | n/a |
+| qwen3-coder-next-reap-40b | Qwen3-Coder-Next-REAP-40B-A3B.i1-Q4_K_S.gguf | c060ca974 | 262144 | PASS | 262144 | 6552MiB | 22.5 | n/a | n/a |
+| qwen3-coder-next-reap-40b | Qwen3-Coder-Next-REAP-40B-A3B.i1-Q4_K_S.gguf | c060ca974 | 262144 | PASS | 262144 | 6552MiB | 22.5 | n/a | n/a |
+| REAP-confirm A Q4_K_S@q4_0 | Qwen3-Coder-Next-REAP-40B-A3B.i1-Q4_K_S.gguf | c060ca974 | n/a | 27.41 | n/a | n/a | n/a | n/a | n/a |
+| qwen3-coder-next-reap-40b | Qwen3-Coder-Next-REAP-40B-A3B.i1-Q4_K_M.gguf | c060ca974 | 262144 | PASS | 262144 | 6490MiB | 24.0 | n/a | n/a |
+| REAP-confirm B Q4_K_M@q8_0 | Qwen3-Coder-Next-REAP-40B-A3B.i1-Q4_K_M.gguf | c060ca974 | n/a | 23.64 | n/a | n/a | n/a | n/a | n/a |

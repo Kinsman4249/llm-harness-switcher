@@ -3,19 +3,25 @@
 One `.sh` file per supported model. Each is a shell fragment sourced by
 `install.sh` (and, in kilo mode, by the generated `start-local-model.sh`)
 after `MODEL_PROFILE` is chosen - it sets every model-specific default the
-installer and launcher need. Only the example profile (`gemma4-e2b.sh`) is
-committed here; git (this folder's `.gitignore`) deliberately ignores every
-other `*.sh` so you can keep private profiles in the same place without
-committing them. This project's other, live-tested profiles live in the
-private presets repo `8gb-immutable-fedora-presets` (see install.sh's
+installer and launcher need. Two profiles are committed (tracked) here as
+shipped showcases and examples:
+- `gemma4-e2b.sh` - the minimal reference profile (multimodal PLE-offload).
+- `ornith-1.5-35b-a3b.sh` - the feature-complete live-tested showcase:
+  `CTX_MODES` (native + opt-in YaRN windows), a `REASONING_MODES` menu,
+  speculative-decoding A/B results, multimodal input, and `NGL_MODE=fit`.
+
+git (this folder's `.gitignore`) deliberately ignores every other `*.sh`
+(unless you allowlist it) so you can keep private profiles in the same place
+without committing them. This project's other live-tested profiles live in
+the private presets repo `8gb-immutable-fedora-presets` (see install.sh's
 `--presets-dir`), discovered but never auto-cloned.
 
 ## Authoring a profile
 
-Copy `gemma4-e2b.sh` (or an existing profile from a presets repo) and edit
-it. The filename stem becomes the profile id (`MODEL_PROFILE`, the folder
-name under `$MODEL_ROOT`), so make it short and dash-lowercase, e.g.
-`my-model-3b.sh`.
+Copy `gemma4-e2b.sh` (or `ornith-1.5-35b-a3b.sh` - the fullest example - or an
+existing profile from a presets repo) and edit it. The filename stem becomes
+the profile id (`MODEL_PROFILE`, the folder name under `$MODEL_ROOT`), so make
+it short and dash-lowercase, e.g. `my-model-3b.sh`.
 
 Field reference (all optional unless marked required):
 
@@ -43,6 +49,7 @@ Field reference (all optional unless marked required):
 | `KV_MODEL` | `manual` (closed-form bytes/token, set `BYTES_PER_TOKEN`) or `probe` (let `--fit` size the KV cache, read the real number from the log). |
 | `BYTES_PER_TOKEN` | KV bytes/token for `KV_MODEL=manual`. |
 | `RECOMMENDED_CTX_8GB` | Live-tested context ceiling on an 8GB card; pre-fills the context prompt default. |
+| `CTX_MODES` | Optional: array of `"name|ctx|yarn_factor|arch_key"` rows offering more than one context window (e.g. `("native|262144|" "yarn2|524288|2|qwen3next.context_length")`). Exposes YaRN/rope extension as an opt-in picker alongside the reasoning-mode menu in kilo mode and via `start-local-model.sh --context <name>`. `native` (the default) serves the model's native window with no rope flags; a row with a non-empty `yarn_factor` emits `--rope-scaling yarn --rope-scale F --yarn-orig-ctx 262144` plus `--override-kv <arch_key>=int:<ctx>`. Absent = single native window. Keep `RECOMMENDED_CTX_8GB` = the `native` row's ctx. |
 | `LLAMA_CPU_FFN_LAYERS_RECOMMENDED` | Live-tested CPU-FFN-offload count; pre-fills the headroom prompt (with `ask_confirm_override` friction to move away). |
 | `DRAFT_REPO` / `DRAFT_PATTERN` | Separate drafter for `SPEC_MODE=draft-model` speculative decoding. |
 | `SPEC_MODE` | `none` (default) / `self-mtp` / `draft-model`. `self-mtp` needs an MTP build (see `qwen35-9b`); `draft-model` needs `DRAFT_REPO`/`DRAFT_PATTERN`. |
@@ -112,3 +119,33 @@ thinking at all. The only ways to switch a mode are:
 Either requires a llama-server restart: the running-mode guard on the fast
 path re-syncs the current server and refuses a conflicting `--mode` rather
 than silently restarting an in-use server.
+
+## Showcase profile: `ornith-1.5-35b-a3b.sh`
+
+The tracked `ornith-1.5-35b-a3b.sh` is the feature-complete demonstration
+profile: a single file that exercises every major field set this project
+implements, all with live-tested numbers on an RTX 3080 8GB / 32GB box.
+Use it as the reference when authoring a new profile that needs more than the
+bare `gemma4-e2b.sh` example. It showcases:
+
+- **`CTX_MODES` - context-window switching.** Native 262144 is the opt-in-only
+  default; `yarn2` extends to 524288 via YaRN x2 (the profile keeps the
+  native-window-is-default stance because static YaRN measurably degrades
+  sub-256K prompts - see the field table above and the profile's context-mode
+  comment).
+- **`REASONING_MODES` - a four-mode menu** (`off,on,budgeted,max` defaulting to
+  `budgeted`), toggled server-side via `THINKING_KWARG_KEY=enable_thinking`.
+- **Speculative-decoding A/B documentation** - the profile records that a
+  ready drafter (EryriLabs `mtpdraft-Q8_0.gguf`) was measured but **lost**, and
+  stays `SPEC_MODE=none`; `DRAFT_REPO`/`DRAFT_PATTERN` are kept so the A/B is
+  reproducible.
+- **Multimodal input** - `MMPROJ_REPO`/`MMPROJ_PATTERN` so the generated Kilo
+  entry advertises real image input.
+- **MoE on an 8GB card** - `NGL_MODE=fit` (`KV_MODEL=probe`) lets `--fit` place
+  the 256-expert MoE across GPU/RAM instead of forcing `-ngl 99`.
+- **Measured `QUANT_MENU`** with `RECOMMENDED_CTX_8GB` and headroom math
+  worked out per context window.
+
+It was moved here from the private presets repo (2026-08-23) specifically so
+people browsing this repo can see what a fully-wired, live-measured profile
+looks like.
