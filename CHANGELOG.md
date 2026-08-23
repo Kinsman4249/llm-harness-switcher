@@ -4,6 +4,33 @@ This file tracks real changes to this repository. Entries are grouped into numbe
 
 ## [Unreleased]
 
+## [2.4.2] - 2026-08-23
+
+### Changed
+
+- Reorganized the repo so no source file exceeds 500 lines: moved the checked-in
+  script/config artifacts that `install.sh` copies out to their destinations
+  into a `templates/` tree (`templates/bin/`, `templates/desktop/`,
+  `templates/config/`, `templates/systemd/`) and updated every `install.d`
+  `$SCRIPT_DIR/...` reference accordingly (git-renamed, so history is
+  preserved); the files users invoke keep the same installed names in
+  `$BIN_DIR`.
+- Split `install.d/20-prompts-model.sh` (534 lines) into `20-model-profile.sh`,
+  `20-model-sizing.sh`, and `20-model-download-opts.sh`, and
+  `install.d/80-launcher.sh` (650 lines) into `80-launcher-build.sh`,
+  `80-launcher-desktop.sh`, and `80-launcher-verify.sh`. All are function-only
+  and sourced by `install.sh` before `main()`, so the split is
+  behavior-preserving.
+- Split `start-local-model.sh` (722 lines) into a thin orchestrator
+  `templates/bin/start-local-model.sh` plus a function library
+  `templates/bin/start-local-model-lib.sh` (a new file installed alongside it).
+  Both are copied to `$BIN_DIR` together by `install.d/80-launcher.sh`;
+  `uninstall.sh` now removes the lib file too. Function bodies and top-level
+  flow are byte-identical to the original (verified by diffing `declare -f`
+  output and the top-level code).
+- Updated `docs/installation.md` (repo layout tree), `docs/models.md`, and
+  comment references in `model-profiles/*.sh` to the new file names.
+
 ## [2.4.1] - 2026-08-23
 
 ### Changed
