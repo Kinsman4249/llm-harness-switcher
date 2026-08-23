@@ -199,6 +199,16 @@ start_llama_server() {
     -maxdepth 1 -iname 'mmproj-*.gguf' 2>/dev/null | head -n1)"
   [ -n "$MMPROJ" ] && args+=( --mmproj "$MMPROJ" )
 
+  # YaRN past the model's n_ctx_train, from a profile's ROPE_YARN_* fields.
+  # Without these, -c > n_ctx_train on rope-scalable arches is capped/rejected;
+  # the --override-kv raises the GGUF's context_length so the window is accepted.
+  if [ -n "${ROPE_YARN_FACTOR:-}" ] && [ -n "${ROPE_YARN_ORIG_CTX:-}" ]; then
+    args+=( --rope-scaling yarn --rope-scale "$ROPE_YARN_FACTOR" --yarn-orig-ctx "$ROPE_YARN_ORIG_CTX" )
+  fi
+  if [ -n "${ROPE_YARN_OVERRIDE_KV:-}" ]; then
+    args+=( --override-kv "$ROPE_YARN_OVERRIDE_KV" )
+  fi
+
   args+=( --port "$PORT" --host 127.0.0.1 )
 
   if runtime_healthy "$PORT" llama.cpp; then

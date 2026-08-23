@@ -210,6 +210,12 @@ build_llama_args() {
   [ -n "${DEFAULT_TEMP:-}" ]  && args+=( --temp "$DEFAULT_TEMP" )
   [ -n "${DEFAULT_TOP_P:-}" ] && args+=( --top-p "$DEFAULT_TOP_P" )
   [ -n "${DEFAULT_TOP_K:-}" ] && args+=( --top-k "$DEFAULT_TOP_K" )
+  # YaRN past the profile's n_ctx_train (ROPE_YARN_* fields). Without these, -c
+  # > n_ctx_train is capped/rejected; --override-kv raises the GGUF context_length.
+  if [ -n "${ROPE_YARN_FACTOR:-}" ] && [ -n "${ROPE_YARN_ORIG_CTX:-}" ]; then
+    args+=( --rope-scaling yarn --rope-scale "$ROPE_YARN_FACTOR" --yarn-orig-ctx "$ROPE_YARN_ORIG_CTX" )
+  fi
+  [ -n "${ROPE_YARN_OVERRIDE_KV:-}" ] && args+=( --override-kv "$ROPE_YARN_OVERRIDE_KV" )
   args+=( --reasoning off )
   # extra harness args (beyond-256K experiments) go last, after --port is set
   # so they can't collide with the recipe.
