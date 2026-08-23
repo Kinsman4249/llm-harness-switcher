@@ -4,6 +4,23 @@ This file tracks real changes to this repository. Entries are grouped into numbe
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-08-23
+
+### Added
+
+- The kilo launcher (`templates/bin/start-local-model-lib.sh`) and the
+  ctx-ceiling bench (`bench/ctx-ceiling.sh`) now emit YaRN rope-scaling flags
+  from a profile's `ROPE_YARN_*` fields: `--rope-scaling yarn
+  --rope-scale F --yarn-orig-ctx N` plus an `--override-kv
+  <arch>.context_length=int:TARGET` when `ROPE_YARN_FACTOR` /
+  `ROPE_YARN_ORIG_CTX` / `ROPE_YARN_OVERRIDE_KV` are set. This lets a profile
+  extend past its model's `n_ctx_train` through the normal launcher and the
+  ceiling/needle sweeps; without the override, llama-server caps or rejects
+  `-c` past the GGUF context_length. First consumer: the Ornith-1.5 profile at
+  YaRN x2 (524288), whose `fits` was verified uncapped on the box.
+- `bench/ctx-ceiling-results.md` records the Ornith Q4_K_M YaRN x2 outcome
+  (fit PASS at 524288; reasoning-off needle gate empty at that window).
+
 ## [2.4.2] - 2026-08-23
 
 ### Changed
