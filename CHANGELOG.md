@@ -4,9 +4,29 @@ This file tracks real changes to this repository. Entries are grouped into numbe
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-08-23
+
+### Added
+
+- Added a coding-challenge benchmark harness under `bench/`: `coding-challenge.sh`
+  (one-command wrapper that resolves the active port, requires a live server, and
+  runs the driver then the grader), `coding_challenge_gate.py` (agentic driver that
+  poses a single hard cross-file `effort:<N>` reasoning-mode task over the
+  `/v1/chat/completions` tool path, bounded `MAX_TOOL_CHARS` results, hardened
+  GPU/RSS tracking), `coding_challenge_grade.py` (objective, AST-free rubric that
+  never executes the model's output), and `build_challenge_snapshot.py` (stdlib,
+  gitignored hermetic snapshot recording git HEAD). Added gitignore rules for
+  `bench/_challenge_repo/` and the coding-challenge run/result JSONs.
+
 ### Changed
 
 - `start-local-model.sh` now offers the reasoning-mode picker (or honors `--mode`) even when a llama-server is already running and the active profile's `REASONING_MODES` lists more than one mode: picking a different mode stops and restarts the server on the same port, so the Kilo provider entry stays valid and no window reload is required. `ACTIVE_STATE` records the active `ACTIVE_PROFILE` so a later run can re-source the profile; state written before that field existed falls back to the model id.
+- Raised the request timeout in `bench/query_and_grade_nemo.py` from 30 minutes to 1 hour so deep (500K-token) prefills no longer false-fail the quality gate by timeout.
+- Recorded the nemotron35-lightning-30b context-ceiling sweep results in `bench/ctx-ceiling-results.md`.
+
+### Fixed
+
+- Fixed `start-local-model.sh`'s GGUF resolution so it honors the configured `GGUF_PATTERN` quant fragment at runtime, selecting the primary quant in a multi-quant model directory instead of a directory-order `head -n1` that could pick a fallback file.
 
 ## [2.3.0] - 2026-08-20
 
