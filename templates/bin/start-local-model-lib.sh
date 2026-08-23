@@ -118,6 +118,40 @@ pick_mode() {
   done
 }
 
+pick_ctx() {
+  # $1 = preselect context mode. Prompts from the global CTX_MODES array (the
+  # profile's "name|ctx" entries); writes into global PICK_CTX. Bare Enter
+  # accepts the preselect; invalid input re-prompts. Numbers select by position.
+  local preselect="$1" i name cctx
+  local -a CTX_NAMES=()
+  for entry in "${CTX_MODES[@]}"; do
+    name="${entry%%|*}"
+    CTX_NAMES+=("$name")
+  done
+  echo
+  echo "Context window/rope mode?"
+  for i in "${!CTX_NAMES[@]}"; do
+    cctx="${CTX_MODES[$i]}"
+    name="${cctx%%|*}"
+    cctx="${cctx#*|}"
+    cctx="${cctx%%|*}"
+    printf '  %d) %s (%s tokens)\n' "$((i+1))" "$name" "$cctx"
+  done
+  echo "  (Enter) $preselect"
+  PICK_CTX=""
+  while [ -z "$PICK_CTX" ]; do
+    read -rp "Pick a context mode: " PICK_CTX
+    if [ -z "$PICK_CTX" ]; then
+      PICK_CTX="$preselect"
+    elif [[ "$PICK_CTX" =~ ^[0-9]+$ ]] && [ "$PICK_CTX" -ge 1 ] && [ "$PICK_CTX" -le "${#CTX_NAMES[@]}" ]; then
+      PICK_CTX="${CTX_NAMES[$((PICK_CTX-1))]}"
+    else
+      logf "Invalid choice '$PICK_CTX' - enter 1-${#CTX_NAMES[@]} or Enter for $preselect." >&2
+      PICK_CTX=""
+    fi
+  done
+}
+
 stop_llama_server() {
   # $1 = port. Kills only a llama-server bound to that port, then waits for its
   # health endpoint to go dark (so a following start_llama_server starts a real
