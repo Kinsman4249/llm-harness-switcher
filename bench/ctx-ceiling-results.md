@@ -62,3 +62,5 @@ blocks and the README table row "Max context tested on an 8GB card").
 | nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q4_K_S.gguf | d59d455fd | 442368 | PASS | 442368 | 6505MiB | 22.4 | n/a | n/a |
 | label-q4ks-442k | nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q4_K_S.gguf | d59d455fd | 442368 | FAIL-Q | 442368 | 6577 | 23.9 | 3/3 |
 | nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_K_M.gguf | d59d455fd | 4096 | PASS | 4096 | 6305MiB | 23.2 | n/a | n/a |
+| ornith-1.5-35b-a3b | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | 524288 | PASS | 524288 | 6403MiB | 23.2 | n/a | n/a |
+| ornith-q4km-524k | ornith-1.5-35b-a3b | Ornith-1.5-35B-Q4_K_M.gguf | d59d455fd | 524288 | FAIL-Q | 524288 | 6443 | 21.1 | /3 |
