@@ -40,7 +40,7 @@ req = urllib.request.Request(
 )
 
 t0 = time.time()
-with urllib.request.urlopen(req, timeout=1800) as resp:
+with urllib.request.urlopen(req, timeout=3600) as resp:
     result = json.loads(resp.read())
 elapsed = time.time() - t0
 

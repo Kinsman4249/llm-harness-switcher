@@ -36,4 +36,29 @@ blocks and the README table row "Max context tested on an 8GB card").
 - Quality is the real ceiling: the gate passes at 93K depth (3/3 + def) but
   fails just past the 262144 training window (311K depth: 2/3, no def).
   Adoption: "fits but not reliably coherent past 256K; kept at 262144"
-  -> `RECOMMENDED_CTX_8GB=262144` is unchanged for nemotron3-nano-30b.
+  -> `RECOMMENDED_CTX_8GB=262144` is unchanged for nemotron3-nano-30b.| nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-IQ4_NL.gguf | d59d455fd | 262144 | PASS | 262144 | 6577MiB | 19.3 | n/a | n/a |
+| nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-IQ4_NL.gguf | d59d455fd | 262144 | PASS | 262144 | 6577MiB | 19.3 | n/a | n/a |
+| nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-IQ4_NL.gguf | d59d455fd | 294912 | PASS | 294912 | 6379MiB | 19.4 | n/a | n/a |
+| nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-IQ4_NL.gguf | d59d455fd | 327680 | PASS | 327680 | 6513MiB | 19.4 | n/a | n/a |
+| nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-IQ4_NL.gguf | d59d455fd | 393216 | PASS | 393216 | 6427MiB | 19.5 | n/a | n/a |
+| nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-IQ4_NL.gguf | d59d455fd | 524288 | PASS | 524288 | 6651MiB | 19.6 | n/a | n/a |
+| nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-IQ4_NL.gguf | d59d455fd | 786432 | PASS | 786432 | 6633MiB | 19.9 | n/a | n/a |
+| nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-IQ4_NL.gguf | d59d455fd | 1048576 | PASS | 1048576 | 6221MiB | 21.6 | n/a | n/a |
+| label-iq4nl | nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-IQ4_NL.gguf | d59d455fd | 524288 | FAIL-Q | 524288 | 6721 | 19.7 | /3 |
+| label-iq4nl-262k | nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-IQ4_NL.gguf | d59d455fd | 262144 | FAIL-Q | 262144 | 6647 | 20.2 | 3/3 |
+| label-iq4nl-64k | nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-IQ4_NL.gguf | d59d455fd | 65536 | PASS | 65536 | 6529 | 19.8 | 3/3 |
+| label-iq4nl-200k | nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-IQ4_NL.gguf | d59d455fd | 200000 | PASS | 200192 | 6393 | 20.2 | 3/3 |
+| label-iq4nl-245k | nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-IQ4_NL.gguf | d59d455fd | 245760 | FAIL-Q | 245760 | 6579 | 20.2 | 3/3 |
+| nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_K_M.gguf | d59d455fd | 65536 | PASS | 65536 | 6557MiB | 23.1 | n/a | n/a |
+| nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_K_M.gguf | d59d455fd | 131072 | PASS | 131072 | 6189MiB | 23.3 | n/a | n/a |
+| nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_K_M.gguf | d59d455fd | 262144 | PASS | 262144 | 6295MiB | 23.4 | n/a | n/a |
+| label-q4km-200k | nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_K_M.gguf | d59d455fd | 200000 | PASS | 200192 | 6541 | 24.3 | 3/3 |
+| label-q4km-262k | nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_K_M.gguf | d59d455fd | 262144 | PASS | 262144 | 6365 | 23.8 | 3/3 |
+| label-q4km-393k | nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_K_M.gguf | d59d455fd | 393216 | PASS | 393216 | 6285 | 25.0 | 3/3 |
+| label-q4km-524k | nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_K_M.gguf | d59d455fd | 524288 | FAIL-Q | 524288 | 6393 | 23.9 | 3/3 |
+| label-q4km-458k | nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_K_M.gguf | d59d455fd | 458752 | FAIL-Q | 458752 | 6553 | 24.7 | 3/3 |
+| label-q4km-425k | nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_K_M.gguf | d59d455fd | 425984 | PASS | 425984 | 6419 | 24.7 | 3/3 |
+| label-q4km-442k | nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_K_M.gguf | d59d455fd | 442368 | PASS | 442368 | 6485 | 23.9 | 3/3 |
+| nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q4_K_S.gguf | d59d455fd | 442368 | PASS | 442368 | 6505MiB | 22.4 | n/a | n/a |
+| label-q4ks-442k | nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q4_K_S.gguf | d59d455fd | 442368 | FAIL-Q | 442368 | 6577 | 23.9 | 3/3 |
+| nemotron35-lightning-30b | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_K_M.gguf | d59d455fd | 4096 | PASS | 4096 | 6305MiB | 23.2 | n/a | n/a |

@@ -375,8 +375,17 @@ if [ -n "$PROFILE_ARG" ]; then
   elif [ "${MODEL_RUNTIME:-llama.cpp}" = "vllm" ] && [ -n "${VLLM_MODEL_ID:-}" ]; then
     MODEL_ID="$VLLM_MODEL_ID"; MODEL_RUNTIME="vllm"
   else
-    MODEL_GGUF="$(find "$MODEL_ROOT/$NEEDLE" -maxdepth 1 -type f -iname '*.gguf' \
-                -not -iname 'mtp-*' -not -iname '*assistant*' -not -iname 'mmproj-*' 2>/dev/null | head -n1)"
+    if [ -n "${GGUF_PATTERN:-}" ]; then
+      # Prefer the configured quant fragment (GGUF_PATTERN, set at install time
+      # or in ~/.config/claude-local-setup.conf). find returns directory order,
+      # NOT alphabetical, so a multi-quant model dir needs this to reliably pick
+      # the primary quant at runtime (the old head -n1 could pick a fallback).
+      MODEL_GGUF="$(find "$MODEL_ROOT/$NEEDLE" -maxdepth 1 -type f -iname "*${GGUF_PATTERN}*.gguf" \
+                  -not -iname 'mtp-*' -not -iname '*assistant*' -not -iname 'mmproj-*' 2>/dev/null | head -n1)"
+    fi
+    [ -z "${MODEL_GGUF:-}" ] && \
+      MODEL_GGUF="$(find "$MODEL_ROOT/$NEEDLE" -maxdepth 1 -type f -iname '*.gguf' \
+                  -not -iname 'mtp-*' -not -iname '*assistant*' -not -iname 'mmproj-*' 2>/dev/null | head -n1)"
     if [ -z "$MODEL_GGUF" ]; then
       echo "ERROR: no GGUF found under $MODEL_ROOT/$NEEDLE/ - run install.sh's" >&2
       echo "download step first (or drop the file there)." >&2
