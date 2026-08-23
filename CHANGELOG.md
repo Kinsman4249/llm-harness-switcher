@@ -4,6 +4,18 @@ This file tracks real changes to this repository. Entries are grouped into numbe
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-08-23
+
+### Changed
+
+- Split the README into a linked `docs/` manual, moving the installation, model
+  selection, usage, context-sizing, and troubleshooting content into
+  `docs/installation.md`, `docs/models.md`, `docs/usage.md`,
+  `docs/context-sizing.md`, and `docs/troubleshooting.md`, with the README now
+  linking to them.
+- Marked `start-local-model.sh` as executable (file mode changed from `100644`
+  to `100755`; no content change).
+
 ## [2.4.0] - 2026-08-23
 
 ### Added
