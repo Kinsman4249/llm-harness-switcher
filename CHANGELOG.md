@@ -4,6 +4,17 @@ This file tracks real changes to this repository. Entries are grouped into numbe
 
 ## [Unreleased]
 
+### Fixed
+
+- The kilo launcher now prefers each profile's `RECOMMENDED_CTX_8GB` over the
+  global/cooked-in `LLAMA_CTX_SIZE` when resolving the server context. At
+  install time the harness bakes the first-installed profile's ctx into the
+  global `LLAMA_CTX_SIZE`, and that stale value would silently re-cap any
+  profile whose `RECOMMENDED_CTX_8GB` was raised later (nemotron 442368,
+  Ornith YaRN 524288) - the hand-served window and Kilo provider entry stayed
+  at the old ceiling until the config was hand-cleared. `LLAMA_CTX_SIZE` still
+  applies for unmatched/raw models that set no `RECOMMENDED_CTX_8GB`.
+
 ## [2.5.0] - 2026-08-23
 
 ### Added

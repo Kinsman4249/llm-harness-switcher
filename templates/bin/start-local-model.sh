@@ -273,7 +273,13 @@ if [ -n "$PROFILE_ARG" ]; then
     MODEL_ID="${KILO_MODEL_ID:-$NEEDLE}"
     MODEL_RUNTIME="llama.cpp"
   fi
-  CTX="${LLAMA_CTX_SIZE:-${RECOMMENDED_CTX_8GB:-$DEFAULT_CTX}}"
+  # Each profile's tested RECOMMENDED_CTX_8GB is the source of truth. Prefer it
+  # over the global/cooked-in LLAMA_CTX_SIZE, which is set at install time to
+  # whichever profile was installed first and would otherwise silently re-cap a
+  # profile whose RECOMMENDED_CTX_8GB was raised later (nemotron 442368, ornith
+  # YaRN 524288). LLAMA_CTX_SIZE still applies for unmatched/raw models that set
+  # no RECOMMENDED_CTX_8GB.
+  CTX="${RECOMMENDED_CTX_8GB:-${LLAMA_CTX_SIZE:-$DEFAULT_CTX}}"
   OUTPUT="${LLAMA_N_PREDICT:-$DEFAULT_OUTPUT}"
   MODEL_NAME="${KILO_MODEL_NAME:-${PROFILE_NAME:-Local Model}}"
   PORT="${RUNTIME_PORT:-$(runtime_default_port "$MODEL_RUNTIME")}"
@@ -318,7 +324,7 @@ else
   elif [ "$MODEL_RUNTIME" = "vllm" ]; then
     MODEL_ID="${VLLM_MODEL_ID:-$MODEL_PATH}"
   fi
-  CTX="${LLAMA_CTX_SIZE:-${RECOMMENDED_CTX_8GB:-$DEFAULT_CTX}}"
+  CTX="${RECOMMENDED_CTX_8GB:-${LLAMA_CTX_SIZE:-$DEFAULT_CTX}}"
   OUTPUT="${LLAMA_N_PREDICT:-$DEFAULT_OUTPUT}"
   MODEL_NAME="${KILO_MODEL_NAME:-${PROFILE_NAME:-Local Model}}"
   if [ "$MODEL_RUNTIME" != "llama.cpp" ] && [ "$MODEL_RUNTIME" != "llama" ]; then
