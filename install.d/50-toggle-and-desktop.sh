@@ -15,7 +15,7 @@ install_toggle_script() {
       -e "s|http://localhost:8080|http://localhost:$LLAMA_PORT|g" \
       -e "s|BIN_DIR=\"\$HOME/.local/bin\"|BIN_DIR=\"$BIN_DIR\"|" \
       -e "s/sk-local-dev-key/$PROXY_MASTER_KEY/g" \
-      "$SCRIPT_DIR/claude-local-toggle.sh" > "$BIN_DIR/claude-local-toggle.sh"
+      "$SCRIPT_DIR/templates/bin/claude-local-toggle.sh" > "$BIN_DIR/claude-local-toggle.sh"
   chmod +x "$BIN_DIR/claude-local-toggle.sh"
   log "Installed toggle script to $BIN_DIR/claude-local-toggle.sh"
 
@@ -37,12 +37,12 @@ install_desktop_shortcut() {
     # notify-send, since a desktop icon has no terminal to print to. It reads
     # TOGGLE_SCRIPT's path, patched here to match wherever BIN_DIR actually is.
     sed -e "s|\$HOME/.local/bin/claude-local-toggle.sh|$BIN_DIR/claude-local-toggle.sh|" \
-        "$SCRIPT_DIR/claude-local-desktop-toggle.sh" > "$BIN_DIR/claude-local-desktop-toggle.sh"
+        "$SCRIPT_DIR/templates/bin/claude-local-desktop-toggle.sh" > "$BIN_DIR/claude-local-desktop-toggle.sh"
     chmod +x "$BIN_DIR/claude-local-desktop-toggle.sh"
 
     mkdir -p "$DESKTOP_DIR"
     sed -e "s|/home/YOUR_USERNAME/.local/bin/claude-local-desktop-toggle.sh|$BIN_DIR/claude-local-desktop-toggle.sh|" \
-        "$SCRIPT_DIR/claude-local-toggle.desktop" > "$DESKTOP_DIR/claude-local-toggle.desktop"
+        "$SCRIPT_DIR/templates/desktop/claude-local-toggle.desktop" > "$DESKTOP_DIR/claude-local-toggle.desktop"
     chmod +x "$DESKTOP_DIR/claude-local-toggle.desktop"
 
     log "Installed desktop shortcut to $DESKTOP_DIR/claude-local-toggle.desktop"

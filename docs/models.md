@@ -126,7 +126,7 @@ Turn thinking on with `install.sh --enable-thinking` (back off with
 interactive prompt flow, so it can't get left on by an "Enter to keep previous
 answer" re-run. Each profile declares `THINKING_KWARG_KEY="enable_thinking"`
 (a capability marker - which chat-template kwarg this model's template uses),
-and `install.d/80-launcher.sh` emits `--chat-template-kwargs` with that key set
+and `install.d/80-launcher-build.sh` emits `--chat-template-kwargs` with that key set
 to whatever `ENABLE_THINKING` resolved to, explicitly true or false either way,
 so the deployed script never depends on a GGUF's undocumented baked-in default.
 

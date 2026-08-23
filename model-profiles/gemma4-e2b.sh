@@ -36,7 +36,7 @@ MODEL_RUNTIME="llama.cpp"                        # llama.cpp | ollama | vllm
 # unsloth repo ships mmproj-*.gguf files (mmproj-BF16/F16/F32.gguf, confirmed
 # in the repo listing 2026-08-18); F16 is the standard llama.cpp pick. With
 # both set, install.d/70-model-download.sh offers to download the projector
-# and install.d/80-launcher.sh passes --mmproj on the llama-server command
+# and install.d/80-launcher-build.sh passes --mmproj on the llama-server command
 # line, and the kilo model entry advertises attachment + image input. Note:
 # whether llama-server actually loads this specific projector still needs one
 # live check against a real build (see the UNVERIFIED caveat at the top) -
@@ -45,7 +45,7 @@ MMPROJ_REPO="unsloth/gemma-4-E2B-it-GGUF"
 MMPROJ_PATTERN="mmproj-F16"
 
 # Reasoning/"thinking" mode for this model. All three modes are supported and
-# wired end to end - install.sh's prompt offers them, install.d/80-launcher.sh
+# wired end to end - install.sh's prompt offers them, install.d/80-launcher-build.sh
 # maps them to the right llama.cpp flag (--reasoning on/off/effort, or the
 # chat-template-kwargs fallback), and sync-local-model.sh copies them into the
 # kilo model entry (reasoning + options.reasoningEffort for "effort"):
@@ -135,7 +135,7 @@ DEFAULT_TOP_K="64"
 # (bytes -> MiB, rounded up): Q4_K_M 3106738272, Q5_K_M 3356037216,
 # Q8_0 5048352864. KV_MODEL=probe means these don't feed the context
 # formula directly (that's Qwen-only, see prompt_vram_and_context in
-# install.d/20-prompts-model.sh) but they're accurate for display now.
+# install.d/20-model-sizing.sh) but they're accurate for display now.
 QUANT_MENU=(
   "Q4_K_M|2963|confirmed from the repo's file listing"
   "Q5_K_M|3201|confirmed from the repo's file listing"

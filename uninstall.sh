@@ -186,7 +186,7 @@ remove_kilo() {
   echo "--- Kilo (Kilo Code provider + launcher) artifacts ---"
   remove_kilo_config
 
-  for f in sync-local-model.sh start-local-model.sh start-local-model-desktop.sh; do
+  for f in sync-local-model.sh start-local-model.sh start-local-model-lib.sh start-local-model-desktop.sh; do
     if [ -f "$BIN_DIR/$f" ]; then
       rm -f "$BIN_DIR/$f"
       echo "Removed $BIN_DIR/$f"

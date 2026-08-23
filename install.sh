@@ -26,13 +26,15 @@
 # function each - live in install.d/*.sh, numbered in the order they run:
 #   00  config defaults + log/backup_config/save_config/ask helpers
 #   10  install mode / packaging / presets + general prompts
-#   20  model-profile and model-sizing prompts
+#   20  model-profile and model-sizing prompts (20-model-profile.sh,
+#       20-model-sizing.sh, 20-model-download-opts.sh)
 #   30  distrobox container name resolution (distrobox packaging only)
 #   40  classic: litellm_config.yaml + on-demand proxy scripts
 #   50  classic: claude-local-toggle.sh + its desktop icon
 #   60  runtime install (llama.cpp build / ollama / vllm, distrobox or native)
 #   70  model download (GGUF / drafter / mmproj / ollama pull)
 #   80  launcher: start-local-llama.sh (classic) / start-local-model.sh (kilo)
+#       split across 80-launcher-build.sh / -desktop.sh / -verify.sh
 #   85  kilo: sync-local-model.sh generation + install-time sync
 #   90  mode-aware final summary
 #

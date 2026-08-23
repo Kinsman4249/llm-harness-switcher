@@ -15,7 +15,7 @@ install_litellm_config() {
   backup_config "$CONFIG_DEST"
   sed -e "s/sk-local-dev-key/$PROXY_MASTER_KEY/g" \
       -e "s|http://localhost:8080|http://localhost:$LLAMA_PORT|g" \
-      "$SCRIPT_DIR/litellm_config.yaml" > "$CONFIG_DEST"
+      "$SCRIPT_DIR/templates/config/litellm_config.yaml" > "$CONFIG_DEST"
 
   if [ "$PROXY_DEBUG_LOG" = "yes" ]; then
     sed -i \
@@ -114,8 +114,8 @@ install_proxy_scripts() {
     return
   fi
   mkdir -p "$BIN_DIR"
-  cp "$SCRIPT_DIR/start-litellm-proxy.sh" "$BIN_DIR/start-litellm-proxy.sh"
-  cp "$SCRIPT_DIR/stop-litellm-proxy.sh" "$BIN_DIR/stop-litellm-proxy.sh"
+  cp "$SCRIPT_DIR/templates/bin/start-litellm-proxy.sh" "$BIN_DIR/start-litellm-proxy.sh"
+  cp "$SCRIPT_DIR/templates/bin/stop-litellm-proxy.sh" "$BIN_DIR/stop-litellm-proxy.sh"
   chmod +x "$BIN_DIR/start-litellm-proxy.sh" "$BIN_DIR/stop-litellm-proxy.sh"
   log "Installed $BIN_DIR/start-litellm-proxy.sh and $BIN_DIR/stop-litellm-proxy.sh"
 }
@@ -130,7 +130,7 @@ install_optional_reminder() {
     mkdir -p "$HOME/.config/systemd/user"
     backup_config "$HOME/.config/systemd/user/distrobox-reminder.service"
     sed "s/distrobox stop ollama-box/distrobox stop $CONTAINER_NAME/g" \
-        "$SCRIPT_DIR/distrobox-reminder.service" > "$HOME/.config/systemd/user/distrobox-reminder.service"
+        "$SCRIPT_DIR/templates/systemd/distrobox-reminder.service" > "$HOME/.config/systemd/user/distrobox-reminder.service"
     systemctl --user daemon-reload
     systemctl --user enable --now distrobox-reminder.service
     echo "Installed and enabled the 'stop the container before gaming' reminder."
